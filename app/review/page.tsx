@@ -6,8 +6,14 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { formatCurrency } from "@/lib/format";
 import { getReviewQueue } from "@/lib/data/products";
 
-export default async function ReviewPage() {
+export default async function ReviewPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ draft?: string | string[] }>;
+}) {
+  const params = await searchParams;
   const queue = await getReviewQueue();
+  const selectedDraftId = Array.isArray(params?.draft) ? params?.draft[0] : params?.draft;
 
   return (
     <div className="space-y-6">
@@ -20,7 +26,10 @@ export default async function ReviewPage() {
 
       <div className="grid gap-4 xl:grid-cols-2">
         {queue.map((item) => (
-          <Card key={item.id} className="overflow-hidden">
+          <Card
+            key={item.id}
+            className={selectedDraftId === item.id ? "overflow-hidden border-primary/60 shadow-[0_0_0_1px_rgba(226,201,126,0.35)]" : "overflow-hidden"}
+          >
             <div className="grid gap-0 md:grid-cols-[0.95fr_1.05fr]">
               <div className="relative min-h-[320px]">
                 <Image src={item.styledImageUrl} alt={item.title} fill className="object-cover" sizes="50vw" />
@@ -29,7 +38,10 @@ export default async function ReviewPage() {
                 <CardHeader className="space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <CardTitle className="font-[var(--font-display)] text-3xl">{item.title}</CardTitle>
-                    <Badge variant="secondary">{item.statusLabel}</Badge>
+                    <div className="flex items-center gap-2">
+                      {selectedDraftId === item.id ? <Badge>New draft</Badge> : null}
+                      <Badge variant="secondary">{item.statusLabel}</Badge>
+                    </div>
                   </div>
                   <p className="text-sm leading-6 text-muted-foreground">{item.description}</p>
                 </CardHeader>

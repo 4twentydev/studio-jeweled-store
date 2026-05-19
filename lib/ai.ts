@@ -19,11 +19,14 @@ const metadataSchema = z.object({
 
 type GenerateProductIntelligenceInput = {
   imageFile: File;
-  titleHint: string;
-  notes: string;
-  materials: string;
-  targetPrice: number;
+  titleHint?: string;
+  notes?: string;
+  materials?: string;
+  targetPrice?: number;
 };
+
+export const PRODUCT_METADATA_MODEL = "gpt-4.1-mini";
+export const PRODUCT_STYLING_MODEL = "gpt-image-1";
 
 function getClient() {
   return new OpenAI({
@@ -36,14 +39,14 @@ async function fileToDataUrl(file: File) {
   return `data:${file.type || "image/png"};base64,${buffer.toString("base64")}`;
 }
 
-function buildMetadataPrompt(input: GenerateProductIntelligenceInput) {
+export function buildMetadataPrompt(input: GenerateProductIntelligenceInput) {
   return [
     "You are generating structured ecommerce metadata for handmade jewelry inventory.",
     "Return commercially useful, concise data aligned with a modern luxury boutique brand.",
-    `Title hint: ${input.titleHint}`,
-    `Craft notes: ${input.notes}`,
-    `Materials: ${input.materials}`,
-    `Target price in USD: ${input.targetPrice}`
+    `Title hint: ${input.titleHint?.trim() || "None provided"}`,
+    `Craft notes: ${input.notes?.trim() || "None provided"}`,
+    `Materials: ${input.materials?.trim() || "Unknown"}`,
+    `Target price in USD: ${input.targetPrice ?? "Not provided"}`
   ].join("\n");
 }
 
@@ -53,7 +56,7 @@ export async function generateProductIntelligence(input: GenerateProductIntellig
   const metadataPrompt = buildMetadataPrompt(input);
 
   const metadataResponse = await client.responses.create({
-    model: "gpt-4.1-mini",
+    model: PRODUCT_METADATA_MODEL,
     input: [
       {
         role: "user",
@@ -116,7 +119,7 @@ export async function generateProductIntelligence(input: GenerateProductIntellig
 
   try {
     const styledImage = await client.images.edit({
-      model: "gpt-image-1",
+      model: PRODUCT_STYLING_MODEL,
       image: input.imageFile,
       size: "1536x1536",
       prompt:
