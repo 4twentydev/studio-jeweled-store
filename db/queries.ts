@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
 import { getDb } from "@/db";
-import { appSettings, productImages, products, type ProductStatus, type Product } from "@/db/schema";
+import { aiGenerations, appSettings, productImages, products, type ProductStatus, type Product } from "@/db/schema";
 
 export async function listProducts(options?: {
   status?: ProductStatus | ProductStatus[];
@@ -44,6 +44,13 @@ export async function getProductById(productId: string) {
       },
       aiGenerations: true
     }
+  });
+}
+
+export async function getAiGenerationById(generationId: string) {
+  const db = getDb();
+  return db.query.aiGenerations.findFirst({
+    where: eq(aiGenerations.id, generationId)
   });
 }
 

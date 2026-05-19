@@ -380,3 +380,85 @@ export async function failPendingCaptureDraft(input: {
 
   return getProductById(input.productId);
 }
+
+export async function createAiGenerationLog(input: {
+  productId?: string | null;
+  inputImageUrl: string;
+  outputImageUrl?: string | null;
+  model: string;
+  prompt: string;
+  rawResponse?: unknown;
+  parsedResponse?: unknown;
+  status?: "pending" | "success" | "failed";
+  errorMessage?: string | null;
+}) {
+  const db = getDb();
+  const [generation] = await db
+    .insert(aiGenerations)
+    .values({
+      productId: input.productId ?? null,
+      inputImageUrl: input.inputImageUrl,
+      outputImageUrl: input.outputImageUrl ?? null,
+      model: input.model,
+      prompt: input.prompt,
+      rawResponse: input.rawResponse,
+      parsedResponse: input.parsedResponse,
+      status: input.status ?? "pending",
+      errorMessage: input.errorMessage ?? null
+    })
+    .returning();
+
+  return generation;
+}
+
+export async function updateAiGenerationLog(input: {
+  generationId: string;
+  outputImageUrl?: string | null;
+  model?: string;
+  prompt?: string;
+  rawResponse?: unknown;
+  parsedResponse?: unknown;
+  status?: "pending" | "success" | "failed";
+  errorMessage?: string | null;
+}) {
+  const db = getDb();
+  const update: {
+    outputImageUrl?: string | null;
+    model?: string;
+    prompt?: string;
+    rawResponse?: unknown;
+    parsedResponse?: unknown;
+    status?: "pending" | "success" | "failed";
+    errorMessage?: string | null;
+  } = {};
+
+  if (input.outputImageUrl !== undefined) {
+    update.outputImageUrl = input.outputImageUrl;
+  }
+  if (input.model !== undefined) {
+    update.model = input.model;
+  }
+  if (input.prompt !== undefined) {
+    update.prompt = input.prompt;
+  }
+  if (input.rawResponse !== undefined) {
+    update.rawResponse = input.rawResponse;
+  }
+  if (input.parsedResponse !== undefined) {
+    update.parsedResponse = input.parsedResponse;
+  }
+  if (input.status !== undefined) {
+    update.status = input.status;
+  }
+  if (input.errorMessage !== undefined) {
+    update.errorMessage = input.errorMessage;
+  }
+
+  const [generation] = await db
+    .update(aiGenerations)
+    .set(update)
+    .where(eq(aiGenerations.id, input.generationId))
+    .returning();
+
+  return generation;
+}

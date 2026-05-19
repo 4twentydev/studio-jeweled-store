@@ -9,8 +9,13 @@ export async function uploadFileToBlob(file: File, folder: string) {
   return blob;
 }
 
-export async function uploadStyledBufferToBlob(filename: string, buffer: Uint8Array, contentType: string) {
-  const blob = await put(`styled/${Date.now()}-${filename}`, buffer, {
+export async function uploadStyledBufferToBlob(
+  filename: string,
+  buffer: Uint8Array,
+  contentType: string,
+  folder = "styled"
+) {
+  const blob = await put(`${folder}/${Date.now()}-${filename}`, buffer, {
     access: "public",
     addRandomSuffix: true,
     contentType
