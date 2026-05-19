@@ -1,10 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { getDb } from "@/db";
-import { products, studioSettings } from "@/db/schema";
+import { createProductDraft, generateSku, generateSlug, updateProductStatus } from "@/db/products";
+import { getPrimaryImage, getProductById, upsertAppSetting } from "@/db/queries";
+import { studioSettingsSchema } from "@/db/validators";
 import { generateProductIntelligence } from "@/lib/ai";
 import { assertFeatureEnabled } from "@/lib/env";
 import { publishToStorefront } from "@/lib/storefront";
@@ -18,30 +18,6 @@ const captureSchema = z.object({
   targetPrice: z.coerce.number().min(0),
   image: z.instanceof(File)
 });
-
-const settingsSchema = z.object({
-  brandVoice: z.string().trim().min(10),
-  defaultMarkupPercent: z.coerce.number().min(0),
-  defaultCollection: z.string().trim().min(2),
-  publishMode: z.string().trim().min(2)
-});
-
-function createSlug(input: string) {
-  return input
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-}
-
-function createSku(title: string) {
-  const base = title.replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toUpperCase() || "JWLD";
-  const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `${base}-${suffix}`;
-}
-
-function createUniqueSlug(title: string) {
-  return `${createSlug(title)}-${Math.random().toString(36).slice(2, 6)}`;
-}
 
 export async function ingestProductCapture(_: unknown, formData: FormData) {
   const parsed = captureSchema.safeParse({
@@ -76,40 +52,68 @@ export async function ingestProductCapture(_: unknown, formData: FormData) {
 
   const styledUpload = intelligence.styledImageBuffer
     ? await uploadStyledBufferToBlob(
-        `${createSlug(intelligence.metadata.title || titleHint)}.png`,
+        `${generateSlug(intelligence.metadata.title || titleHint)}.png`,
         intelligence.styledImageBuffer,
         intelligence.styledImageContentType
       )
     : originalUpload;
 
-  const db = getDb();
-  const insertResult = await db
-    .insert(products)
-    .values({
-      sku: intelligence.metadata.sku || createSku(titleHint),
-      slug: createUniqueSlug(intelligence.metadata.title || titleHint),
-      title: intelligence.metadata.title || titleHint,
-      description: intelligence.metadata.description,
-      materials: intelligence.metadata.materials.length ? intelligence.metadata.materials : [materials],
-      collection: intelligence.metadata.collection,
-      category: intelligence.metadata.category,
-      finish: intelligence.metadata.finish,
-      colorTone: intelligence.metadata.colorTone,
-      dimensions: intelligence.metadata.dimensions,
-      priceCents: Math.round(targetPrice * 100),
-      quantityOnHand,
-      reorderThreshold: 2,
-      status: "ready_for_review",
-      tags: intelligence.metadata.tags,
-      aiModel: intelligence.model,
-      aiSummary: {
-        confidence: intelligence.metadata.confidence,
-        merchandisingNotes: intelligence.metadata.merchandisingNotes
-      },
-      originalImageUrl: originalUpload.url,
-      styledImageUrl: styledUpload.url
-    })
-    .returning({ id: products.id, title: products.title, styledImageUrl: products.styledImageUrl });
+  const images = [
+    {
+      originalUrl: originalUpload.url,
+      processedUrl: null,
+      altText: intelligence.metadata.title || titleHint,
+      isPrimary: !intelligence.styledImageBuffer,
+      imageKind: "original" as const
+    },
+    ...(intelligence.styledImageBuffer
+      ? [
+          {
+            originalUrl: originalUpload.url,
+            processedUrl: styledUpload.url,
+            thumbnailUrl: styledUpload.url,
+            altText: intelligence.metadata.title || titleHint,
+            isPrimary: true,
+            imageKind: "processed" as const
+          }
+        ]
+      : [])
+  ];
+
+  const product = await createProductDraft({
+    sku: intelligence.metadata.sku || generateSku(titleHint),
+    slug: `${generateSlug(intelligence.metadata.title || titleHint)}-${crypto.randomUUID().slice(0, 6).toLowerCase()}`,
+    title: intelligence.metadata.title || titleHint,
+    description: intelligence.metadata.description,
+    shortDescription: intelligence.metadata.merchandisingNotes.slice(0, 180),
+    category: intelligence.metadata.category,
+    subcategory: intelligence.metadata.collection,
+    price: targetPrice,
+    quantity: quantityOnHand,
+    status: "review",
+    condition: "handmade",
+    materials: intelligence.metadata.materials.length ? intelligence.metadata.materials : [materials],
+    colors: intelligence.metadata.colorTone ? [intelligence.metadata.colorTone] : [],
+    tags: [
+      ...intelligence.metadata.tags,
+      intelligence.metadata.finish,
+      intelligence.metadata.dimensions
+    ].filter(Boolean),
+    aiConfidence: intelligence.metadata.confidence,
+    aiNotes: `${intelligence.metadata.merchandisingNotes}\n\nCapture notes: ${notes}`,
+    images,
+    aiGeneration: {
+      inputImageUrl: originalUpload.url,
+      outputImageUrl: styledUpload.url,
+      model: intelligence.model,
+      prompt: intelligence.prompt,
+      rawResponse: JSON.parse(JSON.stringify(intelligence.rawResponse)),
+      parsedResponse: intelligence.metadata,
+      status: "success"
+    }
+  });
+
+  const primaryImage = product.images[0];
 
   revalidatePath("/");
   revalidatePath("/capture");
@@ -119,22 +123,17 @@ export async function ingestProductCapture(_: unknown, formData: FormData) {
   return {
     ok: true,
     message: "Draft created and queued for review.",
-    product: insertResult[0]
+    product: {
+      id: product.id,
+      title: product.title,
+      styledImageUrl: primaryImage?.processedUrl ?? primaryImage?.thumbnailUrl ?? primaryImage?.originalUrl ?? ""
+    }
   };
 }
 
 export async function approveProductAction(formData: FormData) {
   const productId = z.string().uuid().parse(formData.get("productId"));
-  const db = getDb();
-
-  await db
-    .update(products)
-    .set({
-      status: "approved",
-      reviewedAt: new Date(),
-      updatedAt: new Date()
-    })
-    .where(eq(products.id, productId));
+  await updateProductStatus(productId, "approved");
 
   revalidatePath("/review");
   revalidatePath("/inventory");
@@ -142,24 +141,21 @@ export async function approveProductAction(formData: FormData) {
 
 export async function publishProductAction(formData: FormData) {
   const productId = z.string().uuid().parse(formData.get("productId"));
-  const db = getDb();
-
-  const [product] = await db.select().from(products).where(eq(products.id, productId)).limit(1);
+  const product = await getProductById(productId);
 
   if (!product) {
     throw new Error("Product not found.");
   }
 
-  await publishToStorefront(product);
+  const primaryImage = await getPrimaryImage(product.id);
+  await publishToStorefront({
+    ...product,
+    imageUrl: primaryImage?.processedUrl ?? primaryImage?.thumbnailUrl ?? primaryImage?.originalUrl ?? null
+  });
 
-  await db
-    .update(products)
-    .set({
-      status: "published",
-      publishedAt: new Date(),
-      updatedAt: new Date()
-    })
-    .where(eq(products.id, productId));
+  await updateProductStatus(productId, "published", {
+    publishedAt: new Date()
+  });
 
   revalidatePath("/review");
   revalidatePath("/inventory");
@@ -167,28 +163,19 @@ export async function publishProductAction(formData: FormData) {
 }
 
 export async function saveStudioSettingsAction(formData: FormData) {
-  const parsed = settingsSchema.parse({
+  const parsed = studioSettingsSchema.parse({
     brandVoice: formData.get("brandVoice"),
     defaultMarkupPercent: formData.get("defaultMarkupPercent"),
     defaultCollection: formData.get("defaultCollection"),
     publishMode: formData.get("publishMode")
   });
 
-  const db = getDb();
-
-  await db
-    .insert(studioSettings)
-    .values({
-      id: "default",
-      ...parsed
-    })
-    .onConflictDoUpdate({
-      target: studioSettings.id,
-      set: {
-        ...parsed,
-        updatedAt: new Date()
-      }
-    });
+  await Promise.all([
+    upsertAppSetting("brandVoice", parsed.brandVoice),
+    upsertAppSetting("defaultMarkupPercent", parsed.defaultMarkupPercent),
+    upsertAppSetting("defaultCollection", parsed.defaultCollection),
+    upsertAppSetting("publishMode", parsed.publishMode)
+  ]);
 
   revalidatePath("/settings");
 }

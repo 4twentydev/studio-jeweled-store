@@ -1,14 +1,35 @@
-import { desc, eq, inArray } from "drizzle-orm";
-import { getDb, hasDatabase } from "@/db";
-import { products, studioSettings } from "@/db/schema";
+import { hasDatabase } from "@/db";
+import { formatPrice, INITIAL_CATEGORIES } from "@/db/products";
+import { getAppSetting, listProducts, listReviewQueue, productPriceAsNumber } from "@/db/queries";
 import { demoInventory, demoSettings } from "@/lib/demo-data";
+
+function toInventoryCard(item: Awaited<ReturnType<typeof listProducts>>[number]) {
+  const primaryImage = item.images[0];
+  const priceCents = Math.round(productPriceAsNumber(item) * 100);
+
+  return {
+    id: item.id,
+    sku: item.sku,
+    slug: item.slug,
+    title: item.title,
+    description: item.description,
+    tags: item.tags,
+    category: item.category,
+    collection: item.subcategory ?? item.category,
+    priceCents,
+    quantityOnHand: item.quantity,
+    status: item.status,
+    styledImageUrl:
+      primaryImage?.processedUrl ?? primaryImage?.thumbnailUrl ?? primaryImage?.originalUrl ?? "/placeholder.png"
+  };
+}
 
 export async function getDashboardData() {
   if (!hasDatabase()) {
     return {
       metrics: {
         itemsInInventory: demoInventory.length,
-        readyForReview: demoInventory.filter((item) => item.status === "ready_for_review").length,
+        readyForReview: demoInventory.filter((item) => item.status === "review").length,
         lowStockCount: demoInventory.filter((item) => item.quantityOnHand <= 3).length,
         publishReady: demoInventory.filter((item) => item.status === "approved").length,
         newCapturesToday: 4,
@@ -24,18 +45,17 @@ export async function getDashboardData() {
     };
   }
 
-  const db = getDb();
-  const inventory = await db.select().from(products).orderBy(desc(products.updatedAt)).limit(12);
+  const inventory = (await listProducts({ limit: 12 })).map(toInventoryCard);
 
   return {
     metrics: {
       itemsInInventory: inventory.length,
-      readyForReview: inventory.filter((item) => item.status === "ready_for_review").length,
-      lowStockCount: inventory.filter((item) => item.quantityOnHand <= item.reorderThreshold).length,
+      readyForReview: inventory.filter((item) => item.status === "review").length,
+      lowStockCount: inventory.filter((item) => item.quantityOnHand <= 3).length,
       publishReady: inventory.filter((item) => item.status === "approved").length,
-      newCapturesToday: inventory.filter((item) => isToday(item.createdAt)).length,
-      aiProcessedToday: inventory.filter((item) => Boolean(item.aiModel) && isToday(item.updatedAt)).length,
-      publishedToday: inventory.filter((item) => item.publishedAt && isToday(item.publishedAt)).length
+      newCapturesToday: 0,
+      aiProcessedToday: 0,
+      publishedToday: 0
     },
     reviewQueue: inventory
       .filter((item) => item.status !== "published")
@@ -44,7 +64,7 @@ export async function getDashboardData() {
         statusLabel: item.status.replaceAll("_", " "),
         inventoryStatus: `${item.quantityOnHand} on hand`
       })),
-    lowStock: inventory.filter((item) => item.quantityOnHand <= item.reorderThreshold)
+    lowStock: inventory.filter((item) => item.quantityOnHand <= 3)
   };
 }
 
@@ -53,8 +73,7 @@ export async function getInventoryData() {
     return demoInventory;
   }
 
-  const db = getDb();
-  return db.select().from(products).orderBy(desc(products.updatedAt));
+  return (await listProducts()).map(toInventoryCard);
 }
 
 export async function getReviewQueue() {
@@ -67,12 +86,7 @@ export async function getReviewQueue() {
       }));
   }
 
-  const db = getDb();
-  const queue = await db
-    .select()
-    .from(products)
-    .where(inArray(products.status, ["draft", "ready_for_review", "approved"]))
-    .orderBy(desc(products.updatedAt));
+  const queue = (await listReviewQueue()).map(toInventoryCard);
 
   return queue.map((item) => ({
     ...item,
@@ -85,12 +99,19 @@ export async function getSettingsSnapshot() {
     return demoSettings;
   }
 
-  const db = getDb();
-  const [settings] = await db.select().from(studioSettings).where(eq(studioSettings.id, "default")).limit(1);
-  return settings ?? demoSettings;
-}
+  const [brandVoice, defaultMarkupPercent, defaultCollection, publishMode] = await Promise.all([
+    getAppSetting<string>("brandVoice"),
+    getAppSetting<number>("defaultMarkupPercent"),
+    getAppSetting<string>("defaultCollection"),
+    getAppSetting<string>("publishMode")
+  ]);
 
-function isToday(date: Date) {
-  const today = new Date();
-  return date.toDateString() === today.toDateString();
+  return {
+    brandVoice: brandVoice ?? demoSettings.brandVoice,
+    defaultMarkupPercent: defaultMarkupPercent ?? demoSettings.defaultMarkupPercent,
+    defaultCollection: defaultCollection ?? demoSettings.defaultCollection,
+    publishMode: publishMode ?? demoSettings.publishMode,
+    categories: (await getAppSetting<string[]>("productCategories")) ?? [...INITIAL_CATEGORIES],
+    currencyPreview: formatPrice(125)
+  };
 }

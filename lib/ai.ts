@@ -50,6 +50,7 @@ function buildMetadataPrompt(input: GenerateProductIntelligenceInput) {
 export async function generateProductIntelligence(input: GenerateProductIntelligenceInput) {
   const client = getClient();
   const imageDataUrl = await fileToDataUrl(input.imageFile);
+  const metadataPrompt = buildMetadataPrompt(input);
 
   const metadataResponse = await client.responses.create({
     model: "gpt-4.1-mini",
@@ -59,7 +60,7 @@ export async function generateProductIntelligence(input: GenerateProductIntellig
         content: [
           {
             type: "input_text",
-            text: buildMetadataPrompt(input)
+            text: metadataPrompt
           },
           {
             type: "input_image",
@@ -133,6 +134,8 @@ export async function generateProductIntelligence(input: GenerateProductIntellig
 
   return {
     model: metadataResponse.model,
+    prompt: metadataPrompt,
+    rawResponse: metadataResponse,
     metadata,
     styledImageBuffer,
     styledImageContentType

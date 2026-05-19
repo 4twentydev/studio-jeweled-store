@@ -1,7 +1,11 @@
 import { env } from "@/lib/env";
 import type { Product } from "@/db/schema";
 
-export async function publishToStorefront(product: Product) {
+export async function publishToStorefront(
+  product: Product & {
+    imageUrl?: string | null;
+  }
+) {
   if (!env.STOREFRONT_PUBLISH_URL) {
     return;
   }
@@ -22,10 +26,10 @@ export async function publishToStorefront(product: Product) {
       slug: product.slug,
       title: product.title,
       description: product.description,
-      priceCents: product.priceCents,
-      quantityOnHand: product.quantityOnHand,
+      price: Number(product.price),
+      quantity: product.quantity,
       tags: product.tags,
-      imageUrl: product.styledImageUrl
+      imageUrl: product.imageUrl ?? null
     })
   });
 

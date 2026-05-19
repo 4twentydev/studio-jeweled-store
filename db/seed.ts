@@ -1,60 +1,71 @@
+import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { products, studioSettings } from "@/db/schema";
+import { appSettings, stylePresets } from "@/db/schema";
+
+const initialCategories = [
+  "Lighters",
+  "Lighter Cases",
+  "Containers",
+  "Lip Balm Holders",
+  "Accessories",
+  "Custom Pieces",
+  "One-of-One"
+] as const;
+
+const defaultSettings = [
+  {
+    key: "brandVoice",
+    value:
+      "Elegant, intimate, and quietly luxurious. Focus on handmade craftsmanship, tactile materials, and collectible character."
+  },
+  {
+    key: "defaultMarkupPercent",
+    value: 62
+  },
+  {
+    key: "defaultCollection",
+    value: "Core"
+  },
+  {
+    key: "publishMode",
+    value: "Manual review required"
+  },
+  {
+    key: "productCategories",
+    value: [...initialCategories]
+  }
+] as const;
+
+const defaultPreset = {
+  name: "JWLD Clean Catalog",
+  description: "Default studio preset for clean, product-forward ecommerce imagery.",
+  backgroundPrompt: "Neutral luxury backdrop with subtle depth and no visual clutter.",
+  lightingPrompt: "Soft diffused studio light with crisp detail and accurate metal color.",
+  cropRatio: "4:5",
+  outputSize: "1536x1920",
+  exampleImageUrls: [],
+  isDefault: true
+} as const;
 
 const db = getDb();
 
-await db.insert(studioSettings).values({
-  id: "default",
-  brandVoice:
-    "Elegant, intimate, and quietly luxurious. Focus on handmade craftsmanship, materials, and how the piece styles for day-to-night wear.",
-  defaultMarkupPercent: 62,
-  defaultCollection: "Core Collection",
-  publishMode: "Manual review required"
-}).onConflictDoNothing();
+for (const setting of defaultSettings) {
+  const [existing] = await db.select({ id: appSettings.id }).from(appSettings).where(eq(appSettings.key, setting.key)).limit(1);
 
-await db.insert(products).values([
-  {
-    sku: "LUNAIR-A12F",
-    slug: "lunair-drop-earrings",
-    title: "Lunair Drop Earrings",
-    description: "Hand-forged silver drops with moonstone shimmer and a clean studio finish.",
-    materials: ["Sterling silver", "Moonstone"],
-    collection: "Moonlit",
-    category: "Earrings",
-    finish: "Polished",
-    colorTone: "Cool silver",
-    dimensions: "2 in drop length",
-    priceCents: 9200,
-    quantityOnHand: 3,
-    reorderThreshold: 2,
-    status: "ready_for_review",
-    tags: ["moonstone", "silver", "bridal"],
-    aiModel: "gpt-4.1-mini",
-    aiSummary: { confidence: 0.92, merchandisingNotes: "Strong bridal and occasion styling fit." },
-    originalImageUrl: "https://images.unsplash.com/photo-1617038260897-41a1f14a8ca0?auto=format&fit=crop&w=1200&q=80",
-    styledImageUrl: "https://images.unsplash.com/photo-1617038260897-41a1f14a8ca0?auto=format&fit=crop&w=1200&q=80"
-  },
-  {
-    sku: "SOLACE-1K3P",
-    slug: "solace-chain-bracelet",
-    title: "Solace Chain Bracelet",
-    description: "Soft gold chain bracelet with sculptural clasp and a polished luxury profile.",
-    materials: ["14k gold fill"],
-    collection: "Solace",
-    category: "Bracelets",
-    finish: "High polish",
-    colorTone: "Warm gold",
-    dimensions: "7 in length",
-    priceCents: 7600,
-    quantityOnHand: 7,
-    reorderThreshold: 2,
-    status: "published",
-    tags: ["gold", "bracelet", "everyday"],
-    aiModel: "gpt-4.1-mini",
-    aiSummary: { confidence: 0.89, merchandisingNotes: "Strong layering product for storefront upsells." },
-    originalImageUrl: "https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1200&q=80",
-    styledImageUrl: "https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1200&q=80"
+  if (existing) {
+    await db
+      .update(appSettings)
+      .set({
+        value: setting.value,
+        updatedAt: new Date()
+      })
+      .where(eq(appSettings.id, existing.id));
+    continue;
   }
-]).onConflictDoNothing();
+
+  await db.insert(appSettings).values(setting);
+}
+
+await db.insert(stylePresets).values(defaultPreset).onConflictDoNothing({ target: stylePresets.name });
 
 console.log("Seed complete.");

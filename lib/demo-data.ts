@@ -6,11 +6,11 @@ export const demoInventory = [
     title: "Lunair Drop Earrings",
     description: "Hand-forged silver drops with moonstone shimmer and a clean studio finish.",
     tags: ["moonstone", "silver", "bridal"],
-    category: "Earrings",
+    category: "Accessories",
     collection: "Moonlit",
     priceCents: 9200,
     quantityOnHand: 3,
-    status: "ready_for_review" as const,
+    status: "review" as const,
     styledImageUrl: "https://images.unsplash.com/photo-1617038260897-41a1f14a8ca0?auto=format&fit=crop&w=1200&q=80"
   },
   {
@@ -20,7 +20,7 @@ export const demoInventory = [
     title: "Solace Chain Bracelet",
     description: "Soft gold chain bracelet with sculptural clasp and a polished luxury profile.",
     tags: ["gold", "bracelet", "everyday"],
-    category: "Bracelets",
+    category: "Accessories",
     collection: "Solace",
     priceCents: 7600,
     quantityOnHand: 7,
@@ -34,7 +34,7 @@ export const demoInventory = [
     title: "Arcana Statement Ring",
     description: "A textured statement ring with rich patina and refined studio color control.",
     tags: ["ring", "statement", "silver"],
-    category: "Rings",
+    category: "One-of-One",
     collection: "Arcana",
     priceCents: 10800,
     quantityOnHand: 2,
@@ -47,6 +47,6 @@ export const demoSettings = {
   brandVoice:
     "Elegant, intimate, and quietly luxurious. Descriptions should highlight the handmade nature, tactility, and styling versatility of each piece.",
   defaultMarkupPercent: 62,
-  defaultCollection: "Core Collection",
+  defaultCollection: "Core",
   publishMode: "Manual review required"
 };

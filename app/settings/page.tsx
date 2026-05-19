@@ -59,6 +59,11 @@ export default async function SettingsPage() {
                 <Label htmlFor="publishMode">Publishing mode</Label>
                 <Input id="publishMode" name="publishMode" defaultValue={settings.publishMode} />
               </div>
+              {"categories" in settings ? (
+                <div className="rounded-2xl border bg-black/20 p-4 text-sm text-muted-foreground">
+                  Categories: {settings.categories.join(", ")}
+                </div>
+              ) : null}
               <Button type="submit">Save settings</Button>
             </form>
           </CardContent>
