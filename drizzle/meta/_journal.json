@@ -15,6 +15,13 @@
       "when": 1770000001000,
       "tag": "0001_style_preset_generation_links",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1770000002000,
+      "tag": "0002_publish_results",
+      "breakpoints": true
     }
   ]
 }

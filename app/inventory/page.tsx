@@ -310,7 +310,7 @@ export default async function InventoryPage({
             <div>
               <CardTitle className="font-[var(--font-display)] text-3xl">Catalog operations</CardTitle>
               <p className="mt-2 text-sm text-muted-foreground">
-                Select items to move them through approval, archive old records, mark sold pieces, or export a CSV.
+                Select items to move them through approval, archive old records, mark sold pieces, or export catalog data.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -325,6 +325,9 @@ export default async function InventoryPage({
               </Button>
               <Button formAction="/inventory/export" formMethod="get" size="sm" type="submit" variant="ghost">
                 Export selected as CSV
+              </Button>
+              <Button asChild size="sm" variant="ghost">
+                <Link href="/inventory/export?approvedOnly=true&format=json">Export approved products</Link>
               </Button>
               <Button formAction={generateSelectedMetadataAction} size="sm" type="submit" variant="outline">
                 Generate missing metadata

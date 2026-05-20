@@ -1,7 +1,15 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { getProductById } from "@/db/queries";
-import { aiGenerations, productImages, products, stylePresets, type ProductStatus } from "@/db/schema";
+import {
+  aiGenerations,
+  productImages,
+  products,
+  publishResults,
+  stylePresets,
+  type ProductStatus,
+  type PublishMode
+} from "@/db/schema";
 import {
   productDraftSchema,
   productReviewUpdateSchema,
@@ -182,6 +190,33 @@ export async function updateProductStatus(
     .where(eq(products.id, parsed.productId));
 
   return getProductById(parsed.productId);
+}
+
+export async function createPublishResult(input: {
+  productId: string;
+  mode: PublishMode;
+  success: boolean;
+  message: string;
+  target?: string | null;
+  payload?: unknown;
+  response?: unknown;
+}) {
+  const db = getDb();
+
+  const [result] = await db
+    .insert(publishResults)
+    .values({
+      productId: input.productId,
+      mode: input.mode,
+      success: input.success,
+      message: input.message,
+      target: input.target ?? null,
+      payload: input.payload,
+      response: input.response
+    })
+    .returning();
+
+  return result;
 }
 
 export async function updateProductReviewDraft(input: unknown, options?: { status?: ProductStatus }) {

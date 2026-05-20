@@ -5,8 +5,9 @@ const envSchema = z.object({
   DATABASE_URL: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   BLOB_READ_WRITE_TOKEN: z.string().optional(),
-  STOREFRONT_PUBLISH_URL: z.string().url().optional(),
-  STOREFRONT_PUBLISH_TOKEN: z.string().optional()
+  JWLD_PUBLISH_MODE: z.enum(["shared_db", "api_push", "export"]).default("export"),
+  JWLD_STORE_API_URL: z.string().url().optional(),
+  JWLD_STORE_API_KEY: z.string().optional()
 });
 
 export const env = envSchema.parse({
@@ -14,15 +15,19 @@ export const env = envSchema.parse({
   DATABASE_URL: process.env.DATABASE_URL,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
-  STOREFRONT_PUBLISH_URL: process.env.STOREFRONT_PUBLISH_URL,
-  STOREFRONT_PUBLISH_TOKEN: process.env.STOREFRONT_PUBLISH_TOKEN
+  JWLD_PUBLISH_MODE: process.env.JWLD_PUBLISH_MODE ?? "export",
+  JWLD_STORE_API_URL: process.env.JWLD_STORE_API_URL,
+  JWLD_STORE_API_KEY: process.env.JWLD_STORE_API_KEY
 });
 
 const featureFlags = {
   database: Boolean(env.DATABASE_URL),
   openai: Boolean(env.OPENAI_API_KEY),
   blob: Boolean(env.BLOB_READ_WRITE_TOKEN),
-  storefront: Boolean(env.STOREFRONT_PUBLISH_URL)
+  storefront:
+    env.JWLD_PUBLISH_MODE === "export" ||
+    env.JWLD_PUBLISH_MODE === "shared_db" ||
+    Boolean(env.JWLD_STORE_API_URL)
 } as const;
 
 export function getFeatureStatus() {

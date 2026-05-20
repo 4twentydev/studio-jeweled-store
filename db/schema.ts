@@ -25,11 +25,13 @@ export const productStatuses = [
 export const productConditions = ["new", "handmade", "custom", "one_of_one"] as const;
 export const imageKinds = ["original", "processed", "lifestyle", "detail", "thumbnail"] as const;
 export const aiGenerationStatuses = ["pending", "success", "failed"] as const;
+export const publishModes = ["shared_db", "api_push", "export"] as const;
 
 export const productStatusEnum = pgEnum("product_status", productStatuses);
 export const productConditionEnum = pgEnum("product_condition", productConditions);
 export const imageKindEnum = pgEnum("image_kind", imageKinds);
 export const aiGenerationStatusEnum = pgEnum("ai_generation_status", aiGenerationStatuses);
+export const publishModeEnum = pgEnum("publish_mode", publishModes);
 
 export const products = pgTable(
   "products",
@@ -141,9 +143,28 @@ export const appSettings = pgTable(
   (table) => [uniqueIndex("app_settings_key_unique").on(table.key)]
 );
 
+export const publishResults = pgTable(
+  "publish_results",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+    mode: publishModeEnum("mode").notNull(),
+    success: boolean("success").notNull(),
+    message: text("message").notNull(),
+    target: text("target"),
+    payload: jsonb("payload").$type<unknown>(),
+    response: jsonb("response").$type<unknown>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [index("publish_results_product_id_idx").on(table.productId, table.createdAt)]
+);
+
 export const productsRelations = relations(products, ({ many }) => ({
   images: many(productImages),
-  aiGenerations: many(aiGenerations)
+  aiGenerations: many(aiGenerations),
+  publishResults: many(publishResults)
 }));
 
 export const productImagesRelations = relations(productImages, ({ one }) => ({
@@ -168,6 +189,13 @@ export const stylePresetsRelations = relations(stylePresets, ({ many }) => ({
   aiGenerations: many(aiGenerations)
 }));
 
+export const publishResultsRelations = relations(publishResults, ({ one }) => ({
+  product: one(products, {
+    fields: [publishResults.productId],
+    references: [products.id]
+  })
+}));
+
 export type Product = typeof products.$inferSelect;
 export type NewProduct = typeof products.$inferInsert;
 export type ProductImage = typeof productImages.$inferSelect;
@@ -178,7 +206,10 @@ export type StylePreset = typeof stylePresets.$inferSelect;
 export type NewStylePreset = typeof stylePresets.$inferInsert;
 export type AppSetting = typeof appSettings.$inferSelect;
 export type NewAppSetting = typeof appSettings.$inferInsert;
+export type PublishResultRecord = typeof publishResults.$inferSelect;
+export type NewPublishResultRecord = typeof publishResults.$inferInsert;
 export type ProductStatus = (typeof productStatuses)[number];
 export type ProductCondition = (typeof productConditions)[number];
 export type ImageKind = (typeof imageKinds)[number];
 export type AiGenerationStatus = (typeof aiGenerationStatuses)[number];
+export type PublishMode = (typeof publishModes)[number];

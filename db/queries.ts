@@ -3,6 +3,7 @@ import { getDb } from "@/db";
 import {
   aiGenerations,
   appSettings,
+  publishResults,
   productImages,
   products,
   stylePresets,
@@ -55,6 +56,10 @@ export async function getProductById(productId: string) {
           stylePreset: true
         },
         orderBy: [desc(aiGenerations.createdAt)]
+      },
+      publishResults: {
+        orderBy: [desc(publishResults.createdAt)],
+        limit: 1
       }
     }
   });

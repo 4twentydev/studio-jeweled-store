@@ -23,7 +23,7 @@ export default async function DashboardPage() {
               </h1>
               <p className="max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
                 JWLD Studio is built for fast product intake: shoot the piece, standardize the image,
-                generate metadata, then move it through approval and storefront publish.
+                generate metadata, then move it through approval and JWLD.store publishing.
               </p>
             </div>
             <div className="relative flex flex-col gap-3 sm:flex-row">

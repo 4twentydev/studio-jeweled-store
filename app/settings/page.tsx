@@ -17,7 +17,7 @@ export default async function SettingsPage() {
       <div>
         <h1 className="font-[var(--font-display)] text-4xl sm:text-5xl">Settings</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Configure AI, storage, database, and storefront publishing defaults.
+          Configure AI, storage, database, and JWLD.store publishing defaults.
         </p>
       </div>
 

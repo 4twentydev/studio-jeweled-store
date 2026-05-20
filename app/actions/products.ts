@@ -16,7 +16,7 @@ import {
   updateProductReviewDraft,
   updateProductStatus
 } from "@/db/products";
-import { getPrimaryImage, getProductById, getStylePresetById, upsertAppSetting } from "@/db/queries";
+import { getProductById, getStylePresetById, upsertAppSetting } from "@/db/queries";
 import { productStatuses, type ProductStatus } from "@/db/schema";
 import { studioSettingsSchema, stylePresetInputSchema } from "@/db/validators";
 import {
@@ -33,7 +33,7 @@ import {
 } from "@/lib/ai/openai";
 import { assertFeatureEnabled, getFeatureStatus } from "@/lib/env";
 import { getDefaultStylePresetForGeneration } from "@/lib/data/products";
-import { publishToStorefront } from "@/lib/storefront";
+import { publishProduct } from "@/lib/publishing/publisher";
 import { uploadFileToBlob, uploadStyledBufferToBlob } from "@/lib/blob";
 
 const captureSchema = z.object({
@@ -406,23 +406,10 @@ export async function approveProductAction(formData: FormData) {
 
 export async function publishProductAction(formData: FormData) {
   const productId = z.string().uuid().parse(formData.get("productId"));
-  const product = await getProductById(productId);
-
-  if (!product) {
-    throw new Error("Product not found.");
-  }
-
-  const primaryImage = await getPrimaryImage(product.id);
-  await publishToStorefront({
-    ...product,
-    imageUrl: primaryImage?.processedUrl ?? primaryImage?.thumbnailUrl ?? primaryImage?.originalUrl ?? null
-  });
-
-  await updateProductStatus(productId, "published", {
-    publishedAt: new Date()
-  });
+  await publishProduct(productId);
 
   revalidateProductSurfaces(productId);
+  redirect(getSafeRedirect(formData, `/inventory/${productId}`));
 }
 
 export async function saveReviewDraftAction(formData: FormData) {
@@ -444,21 +431,7 @@ export async function approveReviewedProductAction(formData: FormData) {
 export async function publishReviewedProductAction(formData: FormData) {
   const savedProduct = await saveReviewEdits(formData);
   const productId = savedProduct?.id ?? z.string().uuid().parse(formData.get("productId"));
-  const product = await getProductById(productId);
-
-  if (!product) {
-    throw new Error("Product not found.");
-  }
-
-  const primaryImage = await getPrimaryImage(product.id);
-  await publishToStorefront({
-    ...product,
-    imageUrl: primaryImage?.processedUrl ?? primaryImage?.thumbnailUrl ?? primaryImage?.originalUrl ?? null
-  });
-
-  await updateProductStatus(productId, "published", {
-    publishedAt: new Date()
-  });
+  await publishProduct(productId);
 
   revalidateProductSurfaces(productId);
   redirect(getReviewRedirect(formData, productId));
@@ -777,9 +750,9 @@ export async function saveInventoryProductAction(formData: FormData) {
 
   await updateProductReviewDraft(readReviewFormData(formData));
 
-  if (status) {
+  if (status && status !== "published") {
     await updateProductStatus(productId, status, {
-      publishedAt: status === "published" ? new Date() : null
+      publishedAt: null
     });
   }
 

@@ -123,6 +123,22 @@ export default async function ReviewDetailPage({
         </div>
       </div>
 
+      {product.latestPublishResult ? (
+        <Card>
+          <CardContent className="flex flex-col gap-2 p-5 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={product.latestPublishResult.success ? "default" : "secondary"}>
+                {product.latestPublishResult.success ? "Last publish succeeded" : "Last publish failed"}
+              </Badge>
+              <span className="text-muted-foreground">
+                {product.latestPublishResult.modeLabel} on {product.latestPublishResult.createdAtLabel}
+              </span>
+            </div>
+            <p>{product.latestPublishResult.message}</p>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_380px]">
         <div className="space-y-6">
           <div className="grid gap-6 lg:grid-cols-2">
@@ -161,8 +177,13 @@ export default async function ReviewDetailPage({
                   <Button formAction={approveReviewedProductAction} type="submit">
                     Approve
                   </Button>
-                  <Button formAction={publishReviewedProductAction} type="submit" variant="outline">
-                    Publish to Store
+                  <Button
+                    formAction={publishReviewedProductAction}
+                    type="submit"
+                    variant="outline"
+                    disabled={product.status !== "approved"}
+                  >
+                    Publish to JWLD.store
                   </Button>
                 </div>
               </CardHeader>

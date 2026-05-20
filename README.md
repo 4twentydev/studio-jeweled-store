@@ -1,6 +1,6 @@
 # JWLD Studio
 
-Production-ready Next.js App Router application for JWLD.store inventory operations. Kylie can capture a product photo on mobile, run an AI-assisted intake workflow, review metadata, save inventory, and optionally publish to the storefront.
+Production-ready Next.js App Router application for JWLD.store inventory operations. Kylie can capture a product photo on mobile, run an AI-assisted intake workflow, review metadata, save inventory, and publish approved products through a pluggable JWLD.store publishing layer.
 
 ## Stack
 
@@ -22,11 +22,11 @@ Production-ready Next.js App Router application for JWLD.store inventory operati
 
 - Dark-first mobile UI with dashboard, capture, inventory, review, and settings routes
 - Server-component-first architecture
-- Server Actions for capture ingestion, approvals, publishing, and settings
+- Server Actions for capture ingestion, approvals, publishing, exports, and settings
 - Drizzle schema for products and studio settings
 - OpenAI integration for metadata generation and image restyling
 - Vercel Blob upload helpers for original and styled images
-- Optional storefront publish webhook
+- Mode-based publishing abstraction for shared DB, API push, or export
 - Seed script and environment example
 - Fallback demo reads when `DATABASE_URL` is not configured, so the UI still loads during setup
 
@@ -55,7 +55,7 @@ lib/
   data/
   demo-data.ts
   env.ts
-  storefront.ts
+  publishing/
 ```
 
 ## Local setup
@@ -77,7 +77,8 @@ cp .env.example .env.local
 - `DATABASE_URL`: Neon connection string
 - `OPENAI_API_KEY`
 - `BLOB_READ_WRITE_TOKEN`
-- `STOREFRONT_PUBLISH_URL` and `STOREFRONT_PUBLISH_TOKEN` if you want publish webhooks
+- `JWLD_PUBLISH_MODE` to select `shared_db`, `api_push`, or `export`
+- `JWLD_STORE_API_URL` and `JWLD_STORE_API_KEY` for future JWLD.store API publishing
 
 4. Generate and push the database schema:
 
@@ -123,7 +124,13 @@ If `OPENAI_API_KEY` is missing, capture mutations are blocked intentionally.
 
 ## Storefront publishing
 
-`publishProductAction` posts the approved product payload to `STOREFRONT_PUBLISH_URL` if configured. This is intentionally decoupled so JWLD Studio can publish to Shopify, a custom API, or another downstream service without changing the review UI.
+Publishing now routes through [`lib/publishing/publisher.ts`](/home/fourtwenty/Code/studio-jeweled-store/lib/publishing/publisher.ts), which selects one of three modes:
+
+- `shared_db`: reserved for writing into the same product table as `JWLD.store`
+- `api_push`: reserved for pushing approved products to a JWLD.store API
+- `export`: fully implemented now, marks approved products as published and records an export-ready publish result for manual JSON or CSV import
+
+Only approved products can publish. Each publish attempt validates the required storefront fields, records a publish result, and updates `publishedAt` on success.
 
 Example payload:
 
@@ -150,8 +157,9 @@ Example payload:
 - `DATABASE_URL`
 - `OPENAI_API_KEY`
 - `BLOB_READ_WRITE_TOKEN`
-- `STOREFRONT_PUBLISH_URL`
-- `STOREFRONT_PUBLISH_TOKEN`
+- `JWLD_PUBLISH_MODE`
+- `JWLD_STORE_API_URL`
+- `JWLD_STORE_API_KEY`
 
 3. Deploy.
 4. Run database provisioning:

@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
+  publishProductAction,
   regenerateProductImageAction,
   regenerateProductTextAction,
   replaceProcessedImageAction,
@@ -169,7 +170,6 @@ export default async function InventoryProductPage({
                     <option value="draft">Draft</option>
                     <option value="review">Review</option>
                     <option value="approved">Approved</option>
-                    <option value="published">Published</option>
                     <option value="archived">Archived</option>
                     <option value="sold">Sold</option>
                   </select>
@@ -225,6 +225,35 @@ export default async function InventoryProductPage({
                 <span className="text-muted-foreground">Metadata health</span>
                 <span>{product.hasMetadataGaps ? "Needs attention" : "Healthy"}</span>
               </div>
+              <div className="rounded-[1.25rem] border bg-black/20 px-4 py-3">
+                <p className="text-muted-foreground">Last publish result</p>
+                <p className="mt-1">
+                  {product.latestPublishResult
+                    ? `${product.latestPublishResult.message} (${product.latestPublishResult.createdAtLabel})`
+                    : "No publish attempts recorded yet."}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-[var(--font-display)] text-2xl">Publishing</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3">
+              <form action={publishProductAction}>
+                <input type="hidden" name="productId" value={product.id} />
+                <input type="hidden" name="redirectTo" value={redirectTo} />
+                <Button type="submit" className="w-full" disabled={!canEdit || product.status !== "approved"}>
+                  Publish to JWLD.store
+                </Button>
+              </form>
+              <Button asChild variant="outline">
+                <Link href="/inventory/export?approvedOnly=true&format=json">Export approved products</Link>
+              </Button>
+              <p className="text-sm text-muted-foreground">
+                Only approved products can publish. Export mode prepares JSON or CSV for manual JWLD.store import.
+              </p>
             </CardContent>
           </Card>
 
@@ -352,8 +381,8 @@ export default async function InventoryProductPage({
             </CardHeader>
             <CardContent>
               <div className="rounded-[1.5rem] border border-dashed bg-black/20 p-4 text-sm text-muted-foreground">
-                Publish event history will live here once storefront sync logging is added. For now, use the status,
-                published date, and AI history panels to track release readiness.
+                Latest publish results now appear in the studio summary. A full event timeline can build on the saved
+                `publish_results` records later without changing the publishing flow again.
               </div>
             </CardContent>
           </Card>

@@ -70,6 +70,34 @@ function buildDemoDate(offsetDays: number) {
   return new Date(Date.UTC(2026, 4, 19 - offsetDays, 16, 0, 0));
 }
 
+function formatPublishResultMessage(
+  result:
+    | {
+        mode: "shared_db" | "api_push" | "export";
+        message: string;
+        target: string | null;
+        success: boolean;
+        createdAt: Date;
+      }
+    | null
+) {
+  if (!result) {
+    return null;
+  }
+
+  return {
+    ...result,
+    modeLabel: result.mode.replace("_", " "),
+    createdAtLabel: new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit"
+    }).format(result.createdAt)
+  };
+}
+
 function toInventoryCard(item: Awaited<ReturnType<typeof listProducts>>[number]): InventoryListItem {
   const primaryImage = item.images[0];
   const priceCents = Math.round(productPriceAsNumber(item) * 100);
@@ -404,6 +432,7 @@ export async function getReviewProduct(productId: string) {
     originalImage,
     processedImage,
     primaryImage,
+    latestPublishResult: formatPublishResultMessage(product.publishResults[0] ?? null),
     createdDateLabel: new Intl.DateTimeFormat("en-US", {
       month: "short",
       day: "numeric",
@@ -448,7 +477,8 @@ export async function getInventoryProduct(productId: string) {
           createdAt: demoProduct.updatedAt,
           stylePreset: DEFAULT_STYLE_PRESETS.find((preset) => preset.isDefault) ?? DEFAULT_STYLE_PRESETS[0]
         }
-      ]
+      ],
+      latestPublishResult: null
     };
   }
 
@@ -468,7 +498,8 @@ export async function getInventoryProduct(productId: string) {
     materials: product.materials,
     colors: product.colors,
     images: product.images,
-    aiGenerations: product.aiGenerations
+    aiGenerations: product.aiGenerations,
+    latestPublishResult: formatPublishResultMessage(product.publishResults[0] ?? null)
   };
 }
 
