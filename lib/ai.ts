@@ -1,6 +1,9 @@
 import OpenAI from "openai";
 import { z } from "zod";
+import type { StylePreset } from "@/db/schema";
 import { env } from "@/lib/env";
+import { buildProductImagePrompt } from "@/lib/ai/prompts/product-image";
+import { normalizeOutputSize } from "@/lib/style-presets";
 
 const metadataSchema = z.object({
   title: z.string(),
@@ -23,6 +26,10 @@ type GenerateProductIntelligenceInput = {
   notes?: string;
   materials?: string;
   targetPrice?: number;
+  stylePreset: Pick<
+    StylePreset,
+    "name" | "description" | "backgroundPrompt" | "lightingPrompt" | "shadowPrompt" | "cropRatio" | "outputSize"
+  >;
 };
 
 export const PRODUCT_METADATA_MODEL = "gpt-4.1-mini";
@@ -54,6 +61,15 @@ export async function generateProductIntelligence(input: GenerateProductIntellig
   const client = getClient();
   const imageDataUrl = await fileToDataUrl(input.imageFile);
   const metadataPrompt = buildMetadataPrompt(input);
+  const stylePrompt = buildProductImagePrompt(
+    {
+      itemNameIdea: input.titleHint,
+      materials: input.materials,
+      notes: input.notes
+    },
+    "primary",
+    input.stylePreset
+  );
 
   const metadataResponse = await client.responses.create({
     model: PRODUCT_METADATA_MODEL,
@@ -116,15 +132,16 @@ export async function generateProductIntelligence(input: GenerateProductIntellig
 
   let styledImageBuffer: Uint8Array | null = null;
   let styledImageContentType = "image/png";
+  let styledImageRawResponse: unknown = null;
 
   try {
     const styledImage = await client.images.edit({
       model: PRODUCT_STYLING_MODEL,
       image: input.imageFile,
-      size: "1536x1536",
-      prompt:
-        "Restyle this jewelry photo into a polished luxury ecommerce asset for JWLD.store. Maintain the original product faithfully. Use a clean dark-neutral background, soft diffused light, crisp edges, subtle shadow, premium color fidelity, and centered boutique composition."
+      size: normalizeOutputSize(input.stylePreset.outputSize),
+      prompt: stylePrompt
     });
+    styledImageRawResponse = styledImage;
 
     const base64Payload = styledImage.data?.[0]?.b64_json;
     if (base64Payload) {
@@ -136,9 +153,12 @@ export async function generateProductIntelligence(input: GenerateProductIntellig
   }
 
   return {
-    model: metadataResponse.model,
-    prompt: metadataPrompt,
-    rawResponse: metadataResponse,
+    model: `${metadataResponse.model} | ${PRODUCT_STYLING_MODEL}`,
+    prompt: `${metadataPrompt}\n\n---\n\n${stylePrompt}`,
+    rawResponse: {
+      metadata: metadataResponse,
+      styledImage: styledImageRawResponse
+    },
     metadata,
     styledImageBuffer,
     styledImageContentType

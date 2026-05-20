@@ -308,6 +308,11 @@ export default async function InventoryProductPage({
                       </div>
                       <Badge variant={generation.status === "success" ? "default" : "secondary"}>{generation.status}</Badge>
                     </div>
+                    {generation.stylePreset ? (
+                      <p className="mt-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                        Preset: {generation.stylePreset.name}
+                      </p>
+                    ) : null}
                     <p className="mt-3 line-clamp-3 text-sm text-muted-foreground">{generation.prompt}</p>
                     {generation.errorMessage ? <p className="mt-2 text-sm text-red-300">{generation.errorMessage}</p> : null}
                   </div>

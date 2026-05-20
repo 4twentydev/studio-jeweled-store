@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import type { StylePreset } from "@/db/schema";
 import { env } from "@/lib/env";
 import { buildProductImagePrompt, type ProductImagePromptInput } from "@/lib/ai/prompts/product-image";
 import {
@@ -10,6 +11,7 @@ import {
   productMetadataSchema,
   type ProductMetadata
 } from "@/lib/ai/schemas/product-metadata";
+import { normalizeOutputSize } from "@/lib/style-presets";
 
 export const PRODUCT_IMAGE_MODEL = "gpt-image-2";
 export const PRODUCT_METADATA_MODEL = "gpt-4.1";
@@ -254,12 +256,18 @@ export async function generateProductMetadata(
 }
 
 export async function generateProductImageVariant(
-  input: ProductImagePromptInput & SourceImageInput,
+  input: ProductImagePromptInput &
+    SourceImageInput & {
+      stylePreset: Pick<
+        StylePreset,
+        "id" | "name" | "description" | "backgroundPrompt" | "lightingPrompt" | "shadowPrompt" | "cropRatio" | "outputSize"
+      >;
+    },
   variant: "primary" | "clean-background"
 ): Promise<GeneratedImageVariant> {
   const client = getClient();
   const sourceFile = await sourceImageToFile(input);
-  const prompt = buildProductImagePrompt(input, variant);
+  const prompt = buildProductImagePrompt(input, variant, input.stylePreset);
 
   const response = await withRetry(
     () =>
@@ -267,7 +275,7 @@ export async function generateProductImageVariant(
         model: PRODUCT_IMAGE_MODEL,
         image: sourceFile,
         prompt,
-        size: "1024x1024",
+        size: normalizeOutputSize(input.stylePreset.outputSize),
         quality: "high",
         background: variant === "clean-background" ? "transparent" : "opaque",
         output_format: "png"

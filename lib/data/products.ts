@@ -1,8 +1,18 @@
 import { hasDatabase } from "@/db";
+import { saveStylePreset } from "@/db/products";
 import { formatPrice, INITIAL_CATEGORIES } from "@/db/products";
-import { getAppSetting, getProductById, listProducts, listReviewQueue, productPriceAsNumber } from "@/db/queries";
+import {
+  getAppSetting,
+  getDefaultStylePreset,
+  getProductById,
+  listProducts,
+  listReviewQueue,
+  listStylePresets,
+  productPriceAsNumber
+} from "@/db/queries";
 import { productStatuses, type ProductStatus } from "@/db/schema";
 import { demoInventory, demoSettings } from "@/lib/demo-data";
+import { DEFAULT_STYLE_PRESETS } from "@/lib/style-presets";
 
 const LOW_STOCK_THRESHOLD = 3;
 
@@ -435,7 +445,8 @@ export async function getInventoryProduct(productId: string) {
           prompt: "Demo AI generation history entry",
           status: "success" as const,
           errorMessage: null,
-          createdAt: demoProduct.updatedAt
+          createdAt: demoProduct.updatedAt,
+          stylePreset: DEFAULT_STYLE_PRESETS.find((preset) => preset.isDefault) ?? DEFAULT_STYLE_PRESETS[0]
         }
       ]
     };
@@ -481,4 +492,50 @@ export async function getSettingsSnapshot() {
     categories: (await getAppSetting<string[]>("productCategories")) ?? [...INITIAL_CATEGORIES],
     currencyPreview: formatPrice(125)
   };
+}
+
+export async function getStylePresetsData() {
+  if (!hasDatabase()) {
+    return {
+      presets: DEFAULT_STYLE_PRESETS.map((preset, index) => ({
+        id: `demo-style-preset-${index + 1}`,
+        ...preset
+      })),
+      defaultPresetId: "demo-style-preset-1"
+    };
+  }
+
+  let presets = await listStylePresets();
+
+  if (presets.length === 0) {
+    for (const preset of DEFAULT_STYLE_PRESETS) {
+      await saveStylePreset({
+        ...preset,
+        presetId: null
+      });
+    }
+
+    presets = await listStylePresets();
+  }
+
+  const defaultPreset = presets.find((preset) => preset.isDefault) ?? (await getDefaultStylePreset()) ?? presets[0];
+
+  return {
+    presets,
+    defaultPresetId: defaultPreset?.id ?? null
+  };
+}
+
+export async function getDefaultStylePresetForGeneration() {
+  if (!hasDatabase()) {
+    const demoDefaultPreset = DEFAULT_STYLE_PRESETS.find((preset) => preset.isDefault) ?? DEFAULT_STYLE_PRESETS[0];
+
+    return {
+      id: "demo-style-preset-1",
+      ...demoDefaultPreset
+    };
+  }
+
+  const { presets, defaultPresetId } = await getStylePresetsData();
+  return presets.find((preset) => preset.id === defaultPresetId) ?? presets[0] ?? null;
 }

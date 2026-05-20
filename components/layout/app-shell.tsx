@@ -1,5 +1,8 @@
+"use client";
+
 import type { ReactNode } from "react";
 import { Gem, Settings, Sparkles, Vault } from "lucide-react";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { cn } from "@/lib/utils";
@@ -12,7 +15,13 @@ const navigation = [
   { href: "/settings", label: "Settings", icon: Settings }
 ];
 
+function isActivePath(pathname: string, href: string) {
+  return href === "/" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-[1600px]">
       <aside className="sticky top-0 hidden h-screen w-72 shrink-0 border-r border-white/8 px-6 py-8 lg:block">
@@ -22,18 +31,23 @@ export function AppShell({ children }: { children: ReactNode }) {
             <h1 className="font-[var(--font-display)] text-4xl">Boutique inventory OS</h1>
           </Link>
           <nav className="mt-10 space-y-2">
-            {navigation.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm text-muted-foreground transition hover:bg-white/6 hover:text-foreground"
-                )}
-              >
-                <item.icon className="size-4" />
-                {item.label}
-              </Link>
-            ))}
+            {navigation.map((item) => {
+              const active = isActivePath(pathname, item.href);
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition hover:bg-white/6 hover:text-foreground",
+                    active ? "bg-white/8 text-foreground" : "text-muted-foreground"
+                  )}
+                >
+                  <item.icon className="size-4" />
+                  {item.label}
+                </Link>
+              );
+            })}
           </nav>
           <div className="mt-auto rounded-[1.75rem] border bg-black/20 p-5">
             <p className="text-xs uppercase tracking-[0.28em] text-primary">Purpose built</p>

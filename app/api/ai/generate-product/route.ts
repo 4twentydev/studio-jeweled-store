@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createAiGenerationLog, generateSlug, updateAiGenerationLog } from "@/db/products";
-import { getAiGenerationById } from "@/db/queries";
+import { getAiGenerationById, getStylePresetById } from "@/db/queries";
 import { uploadFileToBlob, uploadStyledBufferToBlob } from "@/lib/blob";
 import {
   generateProductImageVariant,
@@ -10,6 +10,7 @@ import {
   PRODUCT_IMAGE_MODEL,
   PRODUCT_METADATA_MODEL
 } from "@/lib/ai/openai";
+import { getDefaultStylePresetForGeneration } from "@/lib/data/products";
 import { assertFeatureEnabled } from "@/lib/env";
 
 export const runtime = "nodejs";
@@ -18,6 +19,7 @@ const routeSchema = z.object({
   mode: z.enum(["all", "image", "metadata"]).default("all"),
   generationId: z.string().uuid().optional(),
   productId: z.string().uuid().optional(),
+  stylePresetId: z.string().uuid().optional(),
   originalImageUrl: z.string().url().optional(),
   itemNameIdea: z.string().trim().max(120).optional(),
   notes: z.string().trim().max(2000).optional(),
@@ -60,6 +62,7 @@ function readRouteInput(formData: FormData) {
     mode: readString(formData, "mode"),
     generationId: readString(formData, "generationId"),
     productId: readString(formData, "productId"),
+    stylePresetId: readString(formData, "stylePresetId"),
     originalImageUrl: readString(formData, "originalImageUrl"),
     itemNameIdea: readString(formData, "itemNameIdea"),
     notes: readString(formData, "notes"),
@@ -74,6 +77,7 @@ function buildPromptAudit(input: ReturnType<typeof readRouteInput>) {
   return JSON.stringify({
     metadataModel: PRODUCT_METADATA_MODEL,
     imageModel: PRODUCT_IMAGE_MODEL,
+    stylePresetId: input.stylePresetId ?? null,
     input: {
       itemNameIdea: input.itemNameIdea ?? null,
       notes: input.notes ?? null,
@@ -160,6 +164,10 @@ export async function POST(request: Request) {
     const uploadedFile = imageField instanceof File && imageField.size > 0 ? imageField : null;
 
     let existingGeneration = input.generationId ? await getAiGenerationById(input.generationId) : null;
+    const stylePreset =
+      (input.stylePresetId ? await getStylePresetById(input.stylePresetId) : null) ??
+      existingGeneration?.stylePreset ??
+      (await getDefaultStylePresetForGeneration());
     const originalImageUrl =
       input.originalImageUrl ||
       existingGeneration?.inputImageUrl ||
@@ -170,6 +178,16 @@ export async function POST(request: Request) {
         {
           ok: false,
           error: "A product photo is required."
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!stylePreset) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "A style preset is required."
         },
         { status: 400 }
       );
@@ -193,6 +211,7 @@ export async function POST(request: Request) {
       existingGeneration ??
       (await createAiGenerationLog({
         productId: input.productId ?? null,
+        stylePresetId: stylePreset.id,
         inputImageUrl: originalImageUrl,
         model: `${PRODUCT_METADATA_MODEL} | ${PRODUCT_IMAGE_MODEL}`,
         prompt: promptSummary,
@@ -206,6 +225,7 @@ export async function POST(request: Request) {
       generation = await updateAiGenerationLog({
         generationId: generation.id,
         outputImageUrl: snapshot.images?.processedImageUrl ?? null,
+        stylePresetId: stylePreset.id,
         model: `${PRODUCT_METADATA_MODEL} | ${PRODUCT_IMAGE_MODEL}`,
         prompt: promptSummary,
         rawResponse,
@@ -222,6 +242,7 @@ export async function POST(request: Request) {
       file: uploadedFile,
       imageUrl: originalImageUrl,
       itemNameIdea: input.itemNameIdea,
+      stylePreset,
       notes: input.notes,
       materials: input.materials,
       quantity: input.quantity,

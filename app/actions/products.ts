@@ -9,14 +9,16 @@ import {
   createPendingCaptureDraft,
   failPendingCaptureDraft,
   finalizePendingCaptureDraft,
+  saveStylePreset,
+  setDefaultStylePreset,
   setPrimaryProductImage,
   updateAiGenerationLog,
   updateProductReviewDraft,
   updateProductStatus
 } from "@/db/products";
-import { getPrimaryImage, getProductById, upsertAppSetting } from "@/db/queries";
+import { getPrimaryImage, getProductById, getStylePresetById, upsertAppSetting } from "@/db/queries";
 import { productStatuses, type ProductStatus } from "@/db/schema";
-import { studioSettingsSchema } from "@/db/validators";
+import { studioSettingsSchema, stylePresetInputSchema } from "@/db/validators";
 import {
   buildMetadataPrompt,
   generateProductIntelligence,
@@ -30,6 +32,7 @@ import {
   getErrorMessage
 } from "@/lib/ai/openai";
 import { assertFeatureEnabled, getFeatureStatus } from "@/lib/env";
+import { getDefaultStylePresetForGeneration } from "@/lib/data/products";
 import { publishToStorefront } from "@/lib/storefront";
 import { uploadFileToBlob, uploadStyledBufferToBlob } from "@/lib/blob";
 
@@ -121,6 +124,11 @@ function readInventoryStatus(formData: FormData) {
 
 function readSelectedProductIds(formData: FormData) {
   return z.array(z.string().uuid()).parse(formData.getAll("productIds"));
+}
+
+function readStylePresetId(formData: FormData) {
+  const value = formData.get("stylePresetId");
+  return typeof value === "string" && value.length ? z.string().uuid().parse(value) : null;
 }
 
 async function saveReviewEdits(formData: FormData, status?: "draft" | "approved") {
@@ -234,7 +242,7 @@ function revalidateProductSurfaces(productId?: string) {
 export async function ingestProductCapture(_: unknown, formData: FormData) {
   const cameraImage = formData.get("cameraImage");
   const galleryImage = formData.get("galleryImage");
-  const image =
+  const selectedImage =
     cameraImage instanceof File && cameraImage.size > 0
       ? cameraImage
       : galleryImage instanceof File && galleryImage.size > 0
@@ -247,7 +255,7 @@ export async function ingestProductCapture(_: unknown, formData: FormData) {
     quantity: formData.get("quantity"),
     estimatedTimeSpent: formData.get("estimatedTimeSpent"),
     specialDetails: formData.get("specialDetails"),
-    image
+    image: selectedImage
   });
 
   if (!parsed.success) {
@@ -260,6 +268,12 @@ export async function ingestProductCapture(_: unknown, formData: FormData) {
   assertFeatureEnabled("database");
   assertFeatureEnabled("blob");
   assertFeatureEnabled("openai");
+
+  const defaultStylePreset = await getDefaultStylePresetForGeneration();
+
+  if (!defaultStylePreset) {
+    throw new Error("A default style preset is required before capturing products.");
+  }
 
   const { image, itemNameIdea, materials, quantity, estimatedTimeSpent, specialDetails } = parsed.data;
   const captureNotes = buildCaptureNotes({
@@ -283,7 +297,8 @@ export async function ingestProductCapture(_: unknown, formData: FormData) {
     notes: captureNotes,
     originalImageUrl: originalUpload.url,
     aiModel: `${PRODUCT_METADATA_MODEL} + ${PRODUCT_STYLING_MODEL}`,
-    aiPrompt: generationPrompt
+    aiPrompt: generationPrompt,
+    stylePresetId: defaultStylePreset.id
   });
 
   try {
@@ -291,7 +306,8 @@ export async function ingestProductCapture(_: unknown, formData: FormData) {
       titleHint: itemNameIdea,
       notes: captureNotes,
       materials,
-      imageFile: image
+      imageFile: image,
+      stylePreset: defaultStylePreset
     });
 
     const slugBase = intelligence.metadata.title || itemNameIdea || "product-capture";
@@ -335,6 +351,7 @@ export async function ingestProductCapture(_: unknown, formData: FormData) {
       thumbnailUrl: styledUpload?.url ?? null,
       aiModel: intelligence.model,
       aiPrompt: intelligence.prompt,
+      stylePresetId: defaultStylePreset.id,
       rawResponse: JSON.parse(JSON.stringify(intelligence.rawResponse)),
       parsedResponse: intelligence.metadata
     });
@@ -515,14 +532,21 @@ export async function regenerateProductImageAction(formData: FormData) {
 
   const productId = z.string().uuid().parse(formData.get("productId"));
   const product = await getProductById(productId);
+  const stylePresetId = readStylePresetId(formData);
+  const stylePreset = stylePresetId ? await getStylePresetById(stylePresetId) : await getDefaultStylePresetForGeneration();
 
   if (!product) {
     throw new Error("Product not found.");
   }
 
+  if (!stylePreset) {
+    throw new Error("Style preset not found.");
+  }
+
   const originalImageUrl = getOriginalImageUrl(product);
   const generation = await createAiGenerationLog({
     productId,
+    stylePresetId: stylePreset.id,
     inputImageUrl: originalImageUrl,
     model: PRODUCT_IMAGE_MODEL,
     prompt: "Regenerating processed image",
@@ -534,7 +558,8 @@ export async function regenerateProductImageAction(formData: FormData) {
       {
         imageUrl: originalImageUrl,
         filenameHint: `${product.slug || product.id}.png`,
-        ...getProductImagePromptContext(product)
+        ...getProductImagePromptContext(product),
+        stylePreset
       },
       "primary"
     );
@@ -557,6 +582,7 @@ export async function regenerateProductImageAction(formData: FormData) {
 
     await updateAiGenerationLog({
       generationId: generation.id,
+      stylePresetId: stylePreset.id,
       outputImageUrl: uploadedImage.url,
       model: imageResult.model,
       prompt: imageResult.prompt,
@@ -588,14 +614,20 @@ export async function regenerateProductDraftAction(formData: FormData) {
 
   const productId = z.string().uuid().parse(formData.get("productId"));
   const product = await getProductById(productId);
+  const stylePreset = await getDefaultStylePresetForGeneration();
 
   if (!product) {
     throw new Error("Product not found.");
   }
 
+  if (!stylePreset) {
+    throw new Error("Style preset not found.");
+  }
+
   const originalImageUrl = getOriginalImageUrl(product);
   const generation = await createAiGenerationLog({
     productId,
+    stylePresetId: stylePreset.id,
     inputImageUrl: originalImageUrl,
     model: `${PRODUCT_METADATA_MODEL} | ${PRODUCT_IMAGE_MODEL}`,
     prompt: "Regenerating product draft",
@@ -613,7 +645,8 @@ export async function regenerateProductDraftAction(formData: FormData) {
         {
           imageUrl: originalImageUrl,
           filenameHint: `${product.slug || product.id}.png`,
-          ...getProductImagePromptContext(product)
+          ...getProductImagePromptContext(product),
+          stylePreset
         },
         "primary"
       )
@@ -654,6 +687,7 @@ export async function regenerateProductDraftAction(formData: FormData) {
 
     await updateAiGenerationLog({
       generationId: generation.id,
+      stylePresetId: stylePreset.id,
       outputImageUrl: uploadedImage.url,
       model: `${metadataResult.model} | ${imageResult.model}`,
       prompt: `${metadataResult.prompt}\n\n---\n\n${imageResult.prompt}`,
@@ -694,6 +728,42 @@ export async function saveStudioSettingsAction(formData: FormData) {
   ]);
 
   revalidatePath("/settings");
+}
+
+export async function saveStylePresetAction(formData: FormData) {
+  if (!getFeatureStatus().database) {
+    redirect("/settings/style-presets");
+  }
+
+  const parsed = stylePresetInputSchema.parse({
+    presetId: readOptionalString(formData, "presetId"),
+    name: formData.get("name"),
+    description: formData.get("description"),
+    backgroundPrompt: formData.get("backgroundPrompt"),
+    lightingPrompt: formData.get("lightingPrompt"),
+    shadowPrompt: formData.get("shadowPrompt"),
+    cropRatio: formData.get("cropRatio"),
+    outputSize: formData.get("outputSize"),
+    exampleImageUrls: formData.get("exampleImageUrls"),
+    isDefault: formData.get("isDefault") === "on"
+  });
+
+  await saveStylePreset(parsed);
+  revalidatePath("/settings");
+  revalidatePath("/settings/style-presets");
+  redirect("/settings/style-presets");
+}
+
+export async function setDefaultStylePresetAction(formData: FormData) {
+  if (!getFeatureStatus().database) {
+    redirect("/settings/style-presets");
+  }
+
+  const stylePresetId = z.string().uuid().parse(formData.get("stylePresetId"));
+  await setDefaultStylePreset(stylePresetId);
+  revalidatePath("/settings");
+  revalidatePath("/settings/style-presets");
+  redirect("/settings/style-presets");
 }
 
 export async function saveInventoryProductAction(formData: FormData) {

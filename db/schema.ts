@@ -94,6 +94,7 @@ export const aiGenerations = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     productId: uuid("product_id").references(() => products.id, { onDelete: "set null" }),
+    stylePresetId: uuid("style_preset_id").references(() => stylePresets.id, { onDelete: "set null" }),
     inputImageUrl: text("input_image_url").notNull(),
     outputImageUrl: text("output_image_url"),
     model: text("model").notNull(),
@@ -115,6 +116,7 @@ export const stylePresets = pgTable(
     description: text("description"),
     backgroundPrompt: text("background_prompt").notNull(),
     lightingPrompt: text("lighting_prompt").notNull(),
+    shadowPrompt: text("shadow_prompt").notNull(),
     cropRatio: text("crop_ratio").notNull(),
     outputSize: text("output_size").notNull(),
     exampleImageUrls: text("example_image_urls").array().notNull().default([]),
@@ -155,7 +157,15 @@ export const aiGenerationsRelations = relations(aiGenerations, ({ one }) => ({
   product: one(products, {
     fields: [aiGenerations.productId],
     references: [products.id]
+  }),
+  stylePreset: one(stylePresets, {
+    fields: [aiGenerations.stylePresetId],
+    references: [stylePresets.id]
   })
+}));
+
+export const stylePresetsRelations = relations(stylePresets, ({ many }) => ({
+  aiGenerations: many(aiGenerations)
 }));
 
 export type Product = typeof products.$inferSelect;

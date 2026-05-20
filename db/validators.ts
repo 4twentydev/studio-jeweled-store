@@ -132,6 +132,34 @@ export const studioSettingsSchema = z.object({
 
 export const productCategoriesSchema = z.array(z.string().trim().min(1));
 
+const exampleImageUrlsSchema = z.preprocess((value) => {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split(/\r?\n|,/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}, z.array(z.string().url()));
+
+export const stylePresetInputSchema = z.object({
+  presetId: z.string().uuid().nullable().optional(),
+  name: z.string().trim().min(1).max(120),
+  description: z.string().trim().min(1).max(400),
+  backgroundPrompt: z.string().trim().min(10),
+  lightingPrompt: z.string().trim().min(10),
+  shadowPrompt: z.string().trim().min(10),
+  cropRatio: z.string().trim().min(3).max(20),
+  outputSize: z.string().trim().min(3).max(20),
+  exampleImageUrls: exampleImageUrlsSchema.default([]),
+  isDefault: z.coerce.boolean().default(false)
+});
+
 export function toNumericValue(value: number | null | undefined, scale = 2) {
   return value === null || value === undefined ? null : value.toFixed(scale);
 }

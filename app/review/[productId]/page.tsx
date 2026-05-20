@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { INITIAL_CATEGORIES } from "@/db/products";
-import { getReviewProduct } from "@/lib/data/products";
+import { getReviewProduct, getStylePresetsData } from "@/lib/data/products";
 
 function joinList(values: string[]) {
   return values.join(", ");
@@ -94,7 +94,7 @@ export default async function ReviewDetailPage({
   params: Promise<{ productId: string }>;
 }) {
   const { productId } = await params;
-  const product = await getReviewProduct(productId);
+  const [product, stylePresetData] = await Promise.all([getReviewProduct(productId), getStylePresetsData()]);
 
   if (!product) {
     notFound();
@@ -260,9 +260,27 @@ export default async function ReviewDetailPage({
               <form action={regenerateProductImageAction}>
                 <input type="hidden" name="productId" value={product.id} />
                 <input type="hidden" name="redirectTo" value={redirectTo} />
-                <Button type="submit" variant="outline" className="w-full">
-                  Regenerate Image
-                </Button>
+                <div className="grid gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="stylePresetId">Style preset</Label>
+                    <select
+                      id="stylePresetId"
+                      name="stylePresetId"
+                      defaultValue={stylePresetData.defaultPresetId ?? undefined}
+                      className="h-11 w-full rounded-full border bg-transparent px-4 text-sm outline-none"
+                    >
+                      {stylePresetData.presets.map((preset) => (
+                        <option key={preset.id} value={preset.id}>
+                          {preset.name}
+                          {preset.isDefault ? " (Default)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <Button type="submit" variant="outline" className="w-full">
+                    Regenerate Image
+                  </Button>
+                </div>
               </form>
               <form action={regenerateProductTextAction}>
                 <input type="hidden" name="productId" value={product.id} />
@@ -321,6 +339,11 @@ export default async function ReviewDetailPage({
                           }).format(generation.createdAt)}
                         </span>
                       </div>
+                      {generation.stylePreset ? (
+                        <p className="mt-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                          Preset: {generation.stylePreset.name}
+                        </p>
+                      ) : null}
                       <p className="mt-3 line-clamp-3 text-muted-foreground">{generation.prompt}</p>
                       {generation.outputImageUrl ? (
                         <a

@@ -54,6 +54,7 @@ CREATE TABLE "product_images" (
 CREATE TABLE "ai_generations" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "product_id" uuid,
+  "style_preset_id" uuid,
   "input_image_url" text NOT NULL,
   "output_image_url" text,
   "model" text NOT NULL,
@@ -71,6 +72,7 @@ CREATE TABLE "style_presets" (
   "description" text,
   "background_prompt" text NOT NULL,
   "lighting_prompt" text NOT NULL,
+  "shadow_prompt" text NOT NULL,
   "crop_ratio" text NOT NULL,
   "output_size" text NOT NULL,
   "example_image_urls" text[] DEFAULT '{}' NOT NULL,
@@ -87,6 +89,11 @@ ALTER TABLE "product_images"
 ALTER TABLE "ai_generations"
   ADD CONSTRAINT "ai_generations_product_id_products_id_fk"
   FOREIGN KEY ("product_id") REFERENCES "public"."products"("id")
+  ON DELETE set null ON UPDATE no action;
+
+ALTER TABLE "ai_generations"
+  ADD CONSTRAINT "ai_generations_style_preset_id_style_presets_id_fk"
+  FOREIGN KEY ("style_preset_id") REFERENCES "public"."style_presets"("id")
   ON DELETE set null ON UPDATE no action;
 
 CREATE UNIQUE INDEX "app_settings_key_unique" ON "app_settings" USING btree ("key");

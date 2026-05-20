@@ -1,10 +1,11 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { getProductById } from "@/db/queries";
-import { aiGenerations, productImages, products, type ProductStatus } from "@/db/schema";
+import { aiGenerations, productImages, products, stylePresets, type ProductStatus } from "@/db/schema";
 import {
   productDraftSchema,
   productReviewUpdateSchema,
+  stylePresetInputSchema,
   productStatusUpdateSchema,
   toNumericValue
 } from "@/db/validators";
@@ -292,6 +293,7 @@ export async function createPendingCaptureDraft(input: {
   originalImageUrl: string;
   aiModel: string;
   aiPrompt: string;
+  stylePresetId?: string | null;
 }) {
   const db = getDb();
   const now = new Date();
@@ -342,6 +344,7 @@ export async function createPendingCaptureDraft(input: {
       .insert(aiGenerations)
       .values({
         productId: insertedProduct.id,
+        stylePresetId: input.stylePresetId ?? null,
         inputImageUrl: input.originalImageUrl,
         outputImageUrl: null,
         model: input.aiModel,
@@ -384,6 +387,7 @@ export async function finalizePendingCaptureDraft(input: {
   thumbnailUrl?: string | null;
   aiModel: string;
   aiPrompt: string;
+  stylePresetId?: string | null;
   rawResponse?: unknown;
   parsedResponse?: unknown;
 }) {
@@ -440,6 +444,7 @@ export async function finalizePendingCaptureDraft(input: {
         outputImageUrl: input.processedImageUrl ?? null,
         model: input.aiModel,
         prompt: input.aiPrompt,
+        stylePresetId: input.stylePresetId ?? null,
         rawResponse: input.rawResponse,
         parsedResponse: input.parsedResponse,
         status: "success",
@@ -486,6 +491,7 @@ export async function failPendingCaptureDraft(input: {
 
 export async function createAiGenerationLog(input: {
   productId?: string | null;
+  stylePresetId?: string | null;
   inputImageUrl: string;
   outputImageUrl?: string | null;
   model: string;
@@ -500,6 +506,7 @@ export async function createAiGenerationLog(input: {
     .insert(aiGenerations)
     .values({
       productId: input.productId ?? null,
+      stylePresetId: input.stylePresetId ?? null,
       inputImageUrl: input.inputImageUrl,
       outputImageUrl: input.outputImageUrl ?? null,
       model: input.model,
@@ -516,6 +523,7 @@ export async function createAiGenerationLog(input: {
 
 export async function updateAiGenerationLog(input: {
   generationId: string;
+  stylePresetId?: string | null;
   outputImageUrl?: string | null;
   model?: string;
   prompt?: string;
@@ -526,6 +534,7 @@ export async function updateAiGenerationLog(input: {
 }) {
   const db = getDb();
   const update: {
+    stylePresetId?: string | null;
     outputImageUrl?: string | null;
     model?: string;
     prompt?: string;
@@ -535,6 +544,9 @@ export async function updateAiGenerationLog(input: {
     errorMessage?: string | null;
   } = {};
 
+  if (input.stylePresetId !== undefined) {
+    update.stylePresetId = input.stylePresetId;
+  }
   if (input.outputImageUrl !== undefined) {
     update.outputImageUrl = input.outputImageUrl;
   }
@@ -564,4 +576,74 @@ export async function updateAiGenerationLog(input: {
     .returning();
 
   return generation;
+}
+
+export async function saveStylePreset(input: unknown) {
+  const parsed = stylePresetInputSchema.parse(input);
+  const db = getDb();
+  const now = new Date();
+
+  return db.transaction(async (tx) => {
+    if (parsed.isDefault) {
+      await tx.update(stylePresets).set({ isDefault: false, updatedAt: now });
+    }
+
+    if (parsed.presetId) {
+      const [preset] = await tx
+        .update(stylePresets)
+        .set({
+          name: parsed.name,
+          description: parsed.description,
+          backgroundPrompt: parsed.backgroundPrompt,
+          lightingPrompt: parsed.lightingPrompt,
+          shadowPrompt: parsed.shadowPrompt,
+          cropRatio: parsed.cropRatio,
+          outputSize: parsed.outputSize,
+          exampleImageUrls: parsed.exampleImageUrls,
+          isDefault: parsed.isDefault,
+          updatedAt: now
+        })
+        .where(eq(stylePresets.id, parsed.presetId))
+        .returning();
+
+      return preset;
+    }
+
+    const [preset] = await tx
+      .insert(stylePresets)
+      .values({
+        name: parsed.name,
+        description: parsed.description,
+        backgroundPrompt: parsed.backgroundPrompt,
+        lightingPrompt: parsed.lightingPrompt,
+        shadowPrompt: parsed.shadowPrompt,
+        cropRatio: parsed.cropRatio,
+        outputSize: parsed.outputSize,
+        exampleImageUrls: parsed.exampleImageUrls,
+        isDefault: parsed.isDefault
+      })
+      .returning();
+
+    return preset;
+  });
+}
+
+export async function setDefaultStylePreset(stylePresetId: string) {
+  const db = getDb();
+  const now = new Date();
+
+  return db.transaction(async (tx) => {
+    await tx.update(stylePresets).set({ isDefault: false, updatedAt: now });
+
+    const [preset] = await tx
+      .update(stylePresets)
+      .set({
+        isDefault: true,
+        updatedAt: now
+      })
+      .where(eq(stylePresets.id, stylePresetId))
+      .returning();
+
+    return preset;
+  });
 }

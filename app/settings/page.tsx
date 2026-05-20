@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { saveStudioSettingsAction } from "@/app/actions/products";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -88,6 +89,20 @@ export default async function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <CardTitle className="font-[var(--font-display)] text-2xl">Style presets</CardTitle>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Control the default visual look used for AI-generated product photos and manage alternate presentation styles.
+            </p>
+          </div>
+          <Button asChild>
+            <Link href="/settings/style-presets">Manage style presets</Link>
+          </Button>
+        </CardHeader>
+      </Card>
     </div>
   );
 }

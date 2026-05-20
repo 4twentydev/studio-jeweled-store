@@ -1,6 +1,14 @@
 import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
 import { getDb } from "@/db";
-import { aiGenerations, appSettings, productImages, products, type ProductStatus, type Product } from "@/db/schema";
+import {
+  aiGenerations,
+  appSettings,
+  productImages,
+  products,
+  stylePresets,
+  type ProductStatus,
+  type Product
+} from "@/db/schema";
 
 export async function listProducts(options?: {
   status?: ProductStatus | ProductStatus[];
@@ -43,6 +51,9 @@ export async function getProductById(productId: string) {
         orderBy: [desc(productImages.isPrimary), asc(productImages.createdAt)]
       },
       aiGenerations: {
+        with: {
+          stylePreset: true
+        },
         orderBy: [desc(aiGenerations.createdAt)]
       }
     }
@@ -52,7 +63,10 @@ export async function getProductById(productId: string) {
 export async function getAiGenerationById(generationId: string) {
   const db = getDb();
   return db.query.aiGenerations.findFirst({
-    where: eq(aiGenerations.id, generationId)
+    where: eq(aiGenerations.id, generationId),
+    with: {
+      stylePreset: true
+    }
   });
 }
 
@@ -92,6 +106,28 @@ export async function upsertAppSetting<T>(key: string, value: T) {
   }
 
   await db.insert(appSettings).values({ key, value });
+}
+
+export async function listStylePresets() {
+  const db = getDb();
+  return db.query.stylePresets.findMany({
+    orderBy: [desc(stylePresets.isDefault), asc(stylePresets.name)]
+  });
+}
+
+export async function getStylePresetById(stylePresetId: string) {
+  const db = getDb();
+  return db.query.stylePresets.findFirst({
+    where: eq(stylePresets.id, stylePresetId)
+  });
+}
+
+export async function getDefaultStylePreset() {
+  const db = getDb();
+  return db.query.stylePresets.findFirst({
+    where: eq(stylePresets.isDefault, true),
+    orderBy: [asc(stylePresets.name)]
+  });
 }
 
 export function productPriceAsNumber(product: Pick<Product, "price">) {

@@ -18,7 +18,7 @@ export function MobileNav({ items }: { items: NavItem[] }) {
     <>
       <nav className="hidden items-center gap-2 rounded-full border bg-black/30 p-1 lg:flex">
         {items.map((item) => {
-          const active = pathname === item.href;
+          const active = item.href === "/" ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
             <Link
               key={item.href}
@@ -37,7 +37,7 @@ export function MobileNav({ items }: { items: NavItem[] }) {
       <nav className="fixed inset-x-4 bottom-4 z-30 rounded-[1.75rem] border bg-black/70 p-2 shadow-2xl backdrop-blur lg:hidden">
         <div className="grid grid-cols-5 gap-1">
           {items.map((item) => {
-            const active = pathname === item.href;
+            const active = item.href === "/" ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
               <Link
                 key={item.href}

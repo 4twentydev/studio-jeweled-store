@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { appSettings, stylePresets } from "@/db/schema";
+import { DEFAULT_STYLE_PRESETS } from "@/lib/style-presets";
 
 const initialCategories = [
   "Lighters",
@@ -36,17 +37,6 @@ const defaultSettings = [
   }
 ] as const;
 
-const defaultPreset = {
-  name: "JWLD Clean Catalog",
-  description: "Default studio preset for clean, product-forward ecommerce imagery.",
-  backgroundPrompt: "Neutral luxury backdrop with subtle depth and no visual clutter.",
-  lightingPrompt: "Soft diffused studio light with crisp detail and accurate metal color.",
-  cropRatio: "4:5",
-  outputSize: "1536x1920",
-  exampleImageUrls: [],
-  isDefault: true
-} as const;
-
 const db = getDb();
 
 for (const setting of defaultSettings) {
@@ -66,6 +56,18 @@ for (const setting of defaultSettings) {
   await db.insert(appSettings).values(setting);
 }
 
-await db.insert(stylePresets).values(defaultPreset).onConflictDoNothing({ target: stylePresets.name });
+for (const preset of DEFAULT_STYLE_PRESETS) {
+  const [existingPreset] = await db
+    .select({ id: stylePresets.id })
+    .from(stylePresets)
+    .where(eq(stylePresets.name, preset.name))
+    .limit(1);
+
+  if (existingPreset) {
+    continue;
+  }
+
+  await db.insert(stylePresets).values(preset);
+}
 
 console.log("Seed complete.");
