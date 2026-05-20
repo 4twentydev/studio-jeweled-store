@@ -1,11 +1,70 @@
 import { hasDatabase } from "@/db";
 import { formatPrice, INITIAL_CATEGORIES } from "@/db/products";
 import { getAppSetting, getProductById, listProducts, listReviewQueue, productPriceAsNumber } from "@/db/queries";
+import { productStatuses, type ProductStatus } from "@/db/schema";
 import { demoInventory, demoSettings } from "@/lib/demo-data";
 
-function toInventoryCard(item: Awaited<ReturnType<typeof listProducts>>[number]) {
+const LOW_STOCK_THRESHOLD = 3;
+
+export type InventorySort = "newest" | "oldest" | "price_high" | "price_low" | "category" | "quantity";
+export type InventoryQuantityFilter = "all" | "out" | "low" | "in";
+export type InventoryPublishedFilter = "all" | "published" | "unpublished";
+export type InventoryAvailabilityFilter = "all" | "sold" | "available";
+
+export type InventoryFilters = {
+  q?: string;
+  status?: string;
+  category?: string;
+  quantity?: string;
+  published?: string;
+  availability?: string;
+  sort?: string;
+};
+
+export type InventoryListItem = {
+  id: string;
+  sku: string;
+  slug: string;
+  title: string;
+  description: string;
+  shortDescription: string | null;
+  tags: string[];
+  category: string;
+  subcategory: string | null;
+  collection: string;
+  priceCents: number;
+  quantityOnHand: number;
+  status: ProductStatus;
+  styledImageUrl: string;
+  aiConfidence: number | null;
+  aiNotes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  publishedAt: Date | null;
+  isPublished: boolean;
+  isSold: boolean;
+  hasMetadataGaps: boolean;
+};
+
+export type InventoryStats = {
+  totalProducts: number;
+  drafts: number;
+  approved: number;
+  published: number;
+  sold: number;
+  lowQuantity: number;
+  estimatedInventoryValueCents: number;
+};
+
+function buildDemoDate(offsetDays: number) {
+  return new Date(Date.UTC(2026, 4, 19 - offsetDays, 16, 0, 0));
+}
+
+function toInventoryCard(item: Awaited<ReturnType<typeof listProducts>>[number]): InventoryListItem {
   const primaryImage = item.images[0];
   const priceCents = Math.round(productPriceAsNumber(item) * 100);
+  const isPublished = item.status === "published";
+  const isSold = item.status === "sold" || item.quantity === 0;
 
   return {
     id: item.id,
@@ -13,37 +72,219 @@ function toInventoryCard(item: Awaited<ReturnType<typeof listProducts>>[number])
     slug: item.slug,
     title: item.title,
     description: item.description,
+    shortDescription: item.shortDescription,
     tags: item.tags,
     category: item.category,
+    subcategory: item.subcategory,
     collection: item.subcategory ?? item.category,
     priceCents,
     quantityOnHand: item.quantity,
     status: item.status,
     aiConfidence: item.aiConfidence === null ? null : Number(item.aiConfidence),
+    aiNotes: item.aiNotes,
     createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    publishedAt: item.publishedAt,
+    isPublished,
+    isSold,
+    hasMetadataGaps:
+      !item.shortDescription ||
+      item.tags.length === 0 ||
+      item.materials.length === 0 ||
+      item.aiConfidence === null,
     styledImageUrl:
       primaryImage?.processedUrl ?? primaryImage?.thumbnailUrl ?? primaryImage?.originalUrl ?? "/placeholder.png"
   };
 }
 
+function toDemoInventoryCard(
+  item: (typeof demoInventory)[number],
+  index: number
+): InventoryListItem {
+  const createdAt = buildDemoDate(index + 9);
+  const updatedAt = buildDemoDate(index + 1);
+  const isPublished = item.status === "published";
+  const isSold = item.status === "sold" || item.quantityOnHand === 0;
+
+  return {
+    id: item.id,
+    sku: item.sku,
+    slug: item.slug,
+    title: item.title,
+    description: item.description,
+    shortDescription: item.description.slice(0, 120),
+    tags: item.tags,
+    category: item.category,
+    subcategory: item.collection,
+    collection: item.collection,
+    priceCents: item.priceCents,
+    quantityOnHand: item.quantityOnHand,
+    status: item.status,
+    styledImageUrl: item.styledImageUrl,
+    aiConfidence: null,
+    aiNotes: "Demo inventory item.",
+    createdAt,
+    updatedAt,
+    publishedAt: isPublished ? updatedAt : null,
+    isPublished,
+    isSold,
+    hasMetadataGaps: item.tags.length < 3
+  };
+}
+
+function normalizeSearchValue(value: string | undefined) {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function formatInventoryStatus(status: ProductStatus) {
+  return status.replaceAll("_", " ");
+}
+
+function getInventoryStats(items: InventoryListItem[]): InventoryStats {
+  return {
+    totalProducts: items.length,
+    drafts: items.filter((item) => item.status === "draft").length,
+    approved: items.filter((item) => item.status === "approved").length,
+    published: items.filter((item) => item.status === "published").length,
+    sold: items.filter((item) => item.isSold).length,
+    lowQuantity: items.filter((item) => item.quantityOnHand <= LOW_STOCK_THRESHOLD).length,
+    estimatedInventoryValueCents: items.reduce(
+      (sum, item) => sum + item.priceCents * Math.max(item.quantityOnHand, 0),
+      0
+    )
+  };
+}
+
+function getSortValue(filters: InventoryFilters): InventorySort {
+  const sort = filters.sort;
+
+  if (
+    sort === "oldest" ||
+    sort === "price_high" ||
+    sort === "price_low" ||
+    sort === "category" ||
+    sort === "quantity"
+  ) {
+    return sort;
+  }
+
+  return "newest";
+}
+
+function getQuantityFilterValue(filters: InventoryFilters): InventoryQuantityFilter {
+  const quantity = filters.quantity;
+  return quantity === "out" || quantity === "low" || quantity === "in" ? quantity : "all";
+}
+
+function getPublishedFilterValue(filters: InventoryFilters): InventoryPublishedFilter {
+  const published = filters.published;
+  return published === "published" || published === "unpublished" ? published : "all";
+}
+
+function getAvailabilityFilterValue(filters: InventoryFilters): InventoryAvailabilityFilter {
+  const availability = filters.availability;
+  return availability === "sold" || availability === "available" ? availability : "all";
+}
+
+function filterInventoryItems(items: InventoryListItem[], filters: InventoryFilters) {
+  const query = normalizeSearchValue(filters.q);
+  const status = filters.status && productStatuses.includes(filters.status as ProductStatus) ? filters.status : "all";
+  const category = filters.category?.trim() || "all";
+  const quantityFilter = getQuantityFilterValue(filters);
+  const publishedFilter = getPublishedFilterValue(filters);
+  const availabilityFilter = getAvailabilityFilterValue(filters);
+
+  return items.filter((item) => {
+    if (query) {
+      const haystack = [item.sku, item.title, item.category, item.collection, item.tags.join(" ")]
+        .join(" ")
+        .toLowerCase();
+
+      if (!haystack.includes(query)) {
+        return false;
+      }
+    }
+
+    if (status !== "all" && item.status !== status) {
+      return false;
+    }
+
+    if (category !== "all" && item.category !== category) {
+      return false;
+    }
+
+    if (quantityFilter === "out" && item.quantityOnHand !== 0) {
+      return false;
+    }
+
+    if (quantityFilter === "low" && (item.quantityOnHand === 0 || item.quantityOnHand > LOW_STOCK_THRESHOLD)) {
+      return false;
+    }
+
+    if (quantityFilter === "in" && item.quantityOnHand <= LOW_STOCK_THRESHOLD) {
+      return false;
+    }
+
+    if (publishedFilter === "published" && !item.isPublished) {
+      return false;
+    }
+
+    if (publishedFilter === "unpublished" && item.isPublished) {
+      return false;
+    }
+
+    if (availabilityFilter === "sold" && !item.isSold) {
+      return false;
+    }
+
+    if (availabilityFilter === "available" && item.isSold) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function sortInventoryItems(items: InventoryListItem[], sort: InventorySort) {
+  return [...items].sort((left, right) => {
+    switch (sort) {
+      case "oldest":
+        return left.createdAt.getTime() - right.createdAt.getTime();
+      case "price_high":
+        return right.priceCents - left.priceCents;
+      case "price_low":
+        return left.priceCents - right.priceCents;
+      case "category":
+        return left.category.localeCompare(right.category) || left.title.localeCompare(right.title);
+      case "quantity":
+        return right.quantityOnHand - left.quantityOnHand || left.title.localeCompare(right.title);
+      case "newest":
+      default:
+        return right.createdAt.getTime() - left.createdAt.getTime();
+    }
+  });
+}
+
 export async function getDashboardData() {
   if (!hasDatabase()) {
+    const inventory = demoInventory.map(toDemoInventoryCard);
+
     return {
       metrics: {
-        itemsInInventory: demoInventory.length,
-        readyForReview: demoInventory.filter((item) => item.status === "review").length,
-        lowStockCount: demoInventory.filter((item) => item.quantityOnHand <= 3).length,
-        publishReady: demoInventory.filter((item) => item.status === "approved").length,
+        itemsInInventory: inventory.length,
+        readyForReview: inventory.filter((item) => item.status === "review").length,
+        lowStockCount: inventory.filter((item) => item.quantityOnHand <= LOW_STOCK_THRESHOLD).length,
+        publishReady: inventory.filter((item) => item.status === "approved").length,
         newCapturesToday: 4,
         aiProcessedToday: 3,
         publishedToday: 1
       },
-      reviewQueue: demoInventory.map((item) => ({
+      reviewQueue: inventory.map((item) => ({
         ...item,
-        statusLabel: item.status.replaceAll("_", " "),
+        statusLabel: formatInventoryStatus(item.status),
         inventoryStatus: `${item.quantityOnHand} on hand`
       })),
-      lowStock: demoInventory.filter((item) => item.quantityOnHand <= 3)
+      lowStock: inventory.filter((item) => item.quantityOnHand <= LOW_STOCK_THRESHOLD)
     };
   }
 
@@ -53,7 +294,7 @@ export async function getDashboardData() {
     metrics: {
       itemsInInventory: inventory.length,
       readyForReview: inventory.filter((item) => item.status === "review").length,
-      lowStockCount: inventory.filter((item) => item.quantityOnHand <= 3).length,
+      lowStockCount: inventory.filter((item) => item.quantityOnHand <= LOW_STOCK_THRESHOLD).length,
       publishReady: inventory.filter((item) => item.status === "approved").length,
       newCapturesToday: 0,
       aiProcessedToday: 0,
@@ -63,28 +304,54 @@ export async function getDashboardData() {
       .filter((item) => item.status !== "published")
       .map((item) => ({
         ...item,
-        statusLabel: item.status.replaceAll("_", " "),
+        statusLabel: formatInventoryStatus(item.status),
         inventoryStatus: `${item.quantityOnHand} on hand`
       })),
-    lowStock: inventory.filter((item) => item.quantityOnHand <= 3)
+    lowStock: inventory.filter((item) => item.quantityOnHand <= LOW_STOCK_THRESHOLD)
   };
 }
 
 export async function getInventoryData() {
   if (!hasDatabase()) {
-    return demoInventory;
+    return demoInventory.map(toDemoInventoryCard);
   }
 
   return (await listProducts()).map(toInventoryCard);
 }
 
+export async function getInventoryPageData(filters: InventoryFilters) {
+  const items = await getInventoryData();
+  const filteredItems = filterInventoryItems(items, filters);
+  const sortedItems = sortInventoryItems(filteredItems, getSortValue(filters));
+
+  return {
+    items: sortedItems,
+    stats: getInventoryStats(items),
+    categories: [...new Set(items.map((item) => item.category))].sort((left, right) => left.localeCompare(right)),
+    appliedFilters: {
+      q: filters.q?.trim() ?? "",
+      status:
+        filters.status && productStatuses.includes(filters.status as ProductStatus) ? filters.status : "all",
+      category: filters.category?.trim() || "all",
+      quantity: getQuantityFilterValue(filters),
+      published: getPublishedFilterValue(filters),
+      availability: getAvailabilityFilterValue(filters),
+      sort: getSortValue(filters)
+    },
+    totalItems: items.length,
+    filteredCount: sortedItems.length,
+    lowStockThreshold: LOW_STOCK_THRESHOLD
+  };
+}
+
 export async function getReviewQueue() {
   if (!hasDatabase()) {
     return demoInventory
+      .map(toDemoInventoryCard)
       .filter((item) => item.status !== "published")
       .map((item) => ({
         ...item,
-        statusLabel: item.status.replaceAll("_", " "),
+        statusLabel: formatInventoryStatus(item.status),
         aiConfidencePercent: null,
         createdDateLabel: "Demo"
       }));
@@ -94,7 +361,7 @@ export async function getReviewQueue() {
 
   return queue.map((item) => ({
     ...item,
-    statusLabel: item.status.replaceAll("_", " "),
+    statusLabel: formatInventoryStatus(item.status),
     aiConfidencePercent: item.aiConfidence === null ? null : Math.round(item.aiConfidence * 100),
     createdDateLabel: new Intl.DateTimeFormat("en-US", {
       month: "short",
@@ -132,6 +399,65 @@ export async function getReviewProduct(productId: string) {
       day: "numeric",
       year: "numeric"
     }).format(product.createdAt)
+  };
+}
+
+export async function getInventoryProduct(productId: string) {
+  if (!hasDatabase()) {
+    const demoProduct = demoInventory.map(toDemoInventoryCard).find((item) => item.id === productId);
+
+    if (!demoProduct) {
+      return null;
+    }
+
+    return {
+      ...demoProduct,
+      priceValue: demoProduct.priceCents / 100,
+      compareAtPriceValue: null,
+      materials: demoProduct.tags.slice(0, 2),
+      colors: [],
+      images: [
+        {
+          id: `${demoProduct.id}-primary`,
+          originalUrl: demoProduct.styledImageUrl,
+          processedUrl: demoProduct.styledImageUrl,
+          thumbnailUrl: demoProduct.styledImageUrl,
+          altText: demoProduct.title,
+          imageKind: "processed" as const,
+          isPrimary: true,
+          createdAt: demoProduct.createdAt
+        }
+      ],
+      aiGenerations: [
+        {
+          id: `${demoProduct.id}-demo-generation`,
+          model: "Demo",
+          prompt: "Demo AI generation history entry",
+          status: "success" as const,
+          errorMessage: null,
+          createdAt: demoProduct.updatedAt
+        }
+      ]
+    };
+  }
+
+  const product = await getProductById(productId);
+  if (!product) {
+    return null;
+  }
+
+  const mapped = toInventoryCard(product);
+
+  return {
+    ...mapped,
+    shortDescription: product.shortDescription,
+    subcategory: product.subcategory,
+    compareAtPriceValue: product.compareAtPrice ? Number(product.compareAtPrice) : null,
+    priceValue: productPriceAsNumber(product),
+    materials: product.materials,
+    colors: product.colors,
+    images: product.images,
+    aiGenerations: product.aiGenerations
   };
 }
 

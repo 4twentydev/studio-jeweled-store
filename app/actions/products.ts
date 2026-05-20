@@ -15,6 +15,7 @@ import {
   updateProductStatus
 } from "@/db/products";
 import { getPrimaryImage, getProductById, upsertAppSetting } from "@/db/queries";
+import { productStatuses, type ProductStatus } from "@/db/schema";
 import { studioSettingsSchema } from "@/db/validators";
 import {
   buildMetadataPrompt,
@@ -28,7 +29,7 @@ import {
   generateProductMetadata,
   getErrorMessage
 } from "@/lib/ai/openai";
-import { assertFeatureEnabled } from "@/lib/env";
+import { assertFeatureEnabled, getFeatureStatus } from "@/lib/env";
 import { publishToStorefront } from "@/lib/storefront";
 import { uploadFileToBlob, uploadStyledBufferToBlob } from "@/lib/blob";
 
@@ -74,6 +75,11 @@ function getReviewRedirect(formData: FormData, productId: string) {
   return typeof redirectTo === "string" && redirectTo.startsWith("/") ? redirectTo : `/review/${productId}`;
 }
 
+function getSafeRedirect(formData: FormData, fallback: string) {
+  const redirectTo = formData.get("redirectTo");
+  return typeof redirectTo === "string" && redirectTo.startsWith("/") ? redirectTo : fallback;
+}
+
 function readOptionalString(formData: FormData, key: string) {
   const value = formData.get(key);
   if (typeof value !== "string") {
@@ -103,9 +109,85 @@ function readReviewFormData(formData: FormData) {
   };
 }
 
+function readInventoryStatus(formData: FormData) {
+  const status = formData.get("status");
+
+  if (typeof status !== "string") {
+    return null;
+  }
+
+  return productStatuses.includes(status as ProductStatus) ? (status as ProductStatus) : null;
+}
+
+function readSelectedProductIds(formData: FormData) {
+  return z.array(z.string().uuid()).parse(formData.getAll("productIds"));
+}
+
 async function saveReviewEdits(formData: FormData, status?: "draft" | "approved") {
   const input = readReviewFormData(formData);
   return updateProductReviewDraft(input, status ? { status } : undefined);
+}
+
+async function regenerateProductText(productId: string) {
+  assertFeatureEnabled("database");
+  assertFeatureEnabled("openai");
+
+  const product = await getProductById(productId);
+
+  if (!product) {
+    throw new Error("Product not found.");
+  }
+
+  const originalImageUrl = getOriginalImageUrl(product);
+  const generation = await createAiGenerationLog({
+    productId,
+    inputImageUrl: originalImageUrl,
+    model: PRODUCT_METADATA_MODEL,
+    prompt: "Regenerating product metadata",
+    status: "pending"
+  });
+
+  try {
+    const metadataResult = await generateProductMetadata({
+      imageUrl: originalImageUrl,
+      filenameHint: `${product.slug || product.id}.png`,
+      ...getProductMetadataPromptContext(product)
+    });
+
+    await updateProductReviewDraft({
+      productId,
+      title: metadataResult.metadata.title,
+      description: metadataResult.metadata.description,
+      shortDescription: metadataResult.metadata.shortDescription,
+      category: metadataResult.metadata.category,
+      subcategory: metadataResult.metadata.subcategory,
+      price: metadataResult.metadata.price,
+      compareAtPrice: metadataResult.metadata.compareAtPrice,
+      quantity: metadataResult.metadata.quantity,
+      materials: metadataResult.metadata.materials,
+      colors: metadataResult.metadata.colors,
+      tags: metadataResult.metadata.tags,
+      aiNotes: metadataResult.metadata.notesForHuman,
+      aiConfidence: metadataResult.metadata.confidence
+    });
+
+    await updateAiGenerationLog({
+      generationId: generation.id,
+      model: metadataResult.model,
+      prompt: metadataResult.prompt,
+      rawResponse: metadataResult.rawResponse,
+      parsedResponse: metadataResult.metadata,
+      status: "success",
+      errorMessage: null
+    });
+  } catch (error) {
+    await updateAiGenerationLog({
+      generationId: generation.id,
+      status: "failed",
+      errorMessage: getErrorMessage(error)
+    });
+    throw error;
+  }
 }
 
 function getOriginalImageUrl(product: NonNullable<Awaited<ReturnType<typeof getProductById>>>) {
@@ -144,6 +226,7 @@ function revalidateProductSurfaces(productId?: string) {
   revalidatePath("/review");
 
   if (productId) {
+    revalidatePath(`/inventory/${productId}`);
     revalidatePath(`/review/${productId}`);
   }
 }
@@ -418,66 +501,8 @@ export async function replaceProcessedImageAction(formData: FormData) {
 }
 
 export async function regenerateProductTextAction(formData: FormData) {
-  assertFeatureEnabled("database");
-  assertFeatureEnabled("openai");
-
   const productId = z.string().uuid().parse(formData.get("productId"));
-  const product = await getProductById(productId);
-
-  if (!product) {
-    throw new Error("Product not found.");
-  }
-
-  const originalImageUrl = getOriginalImageUrl(product);
-  const generation = await createAiGenerationLog({
-    productId,
-    inputImageUrl: originalImageUrl,
-    model: PRODUCT_METADATA_MODEL,
-    prompt: "Regenerating product metadata",
-    status: "pending"
-  });
-
-  try {
-    const metadataResult = await generateProductMetadata({
-      imageUrl: originalImageUrl,
-      filenameHint: `${product.slug || product.id}.png`,
-      ...getProductMetadataPromptContext(product)
-    });
-
-    await updateProductReviewDraft({
-      productId,
-      title: metadataResult.metadata.title,
-      description: metadataResult.metadata.description,
-      shortDescription: metadataResult.metadata.shortDescription,
-      category: metadataResult.metadata.category,
-      subcategory: metadataResult.metadata.subcategory,
-      price: metadataResult.metadata.price,
-      compareAtPrice: metadataResult.metadata.compareAtPrice,
-      quantity: metadataResult.metadata.quantity,
-      materials: metadataResult.metadata.materials,
-      colors: metadataResult.metadata.colors,
-      tags: metadataResult.metadata.tags,
-      aiNotes: metadataResult.metadata.notesForHuman,
-      aiConfidence: metadataResult.metadata.confidence
-    });
-
-    await updateAiGenerationLog({
-      generationId: generation.id,
-      model: metadataResult.model,
-      prompt: metadataResult.prompt,
-      rawResponse: metadataResult.rawResponse,
-      parsedResponse: metadataResult.metadata,
-      status: "success",
-      errorMessage: null
-    });
-  } catch (error) {
-    await updateAiGenerationLog({
-      generationId: generation.id,
-      status: "failed",
-      errorMessage: getErrorMessage(error)
-    });
-    throw error;
-  }
+  await regenerateProductText(productId);
 
   revalidateProductSurfaces(productId);
   redirect(getReviewRedirect(formData, productId));
@@ -669,4 +694,80 @@ export async function saveStudioSettingsAction(formData: FormData) {
   ]);
 
   revalidatePath("/settings");
+}
+
+export async function saveInventoryProductAction(formData: FormData) {
+  const productId = z.string().uuid().parse(formData.get("productId"));
+  const redirectTo = getSafeRedirect(formData, `/inventory/${productId}`);
+  const status = readInventoryStatus(formData);
+
+  if (!getFeatureStatus().database) {
+    redirect(redirectTo);
+  }
+
+  await updateProductReviewDraft(readReviewFormData(formData));
+
+  if (status) {
+    await updateProductStatus(productId, status, {
+      publishedAt: status === "published" ? new Date() : null
+    });
+  }
+
+  revalidateProductSurfaces(productId);
+  revalidatePath(`/inventory/${productId}`);
+  redirect(redirectTo);
+}
+
+export async function approveSelectedProductsAction(formData: FormData) {
+  if (getFeatureStatus().database) {
+    const productIds = readSelectedProductIds(formData);
+
+    if (productIds.length) {
+      await Promise.all(productIds.map((productId) => updateProductStatus(productId, "approved")));
+    }
+  }
+
+  revalidateProductSurfaces();
+  redirect("/inventory");
+}
+
+export async function archiveSelectedProductsAction(formData: FormData) {
+  if (getFeatureStatus().database) {
+    const productIds = readSelectedProductIds(formData);
+
+    if (productIds.length) {
+      await Promise.all(productIds.map((productId) => updateProductStatus(productId, "archived")));
+    }
+  }
+
+  revalidateProductSurfaces();
+  redirect("/inventory");
+}
+
+export async function markSelectedSoldAction(formData: FormData) {
+  if (getFeatureStatus().database) {
+    const productIds = readSelectedProductIds(formData);
+
+    if (productIds.length) {
+      await Promise.all(productIds.map((productId) => updateProductStatus(productId, "sold")));
+    }
+  }
+
+  revalidateProductSurfaces();
+  redirect("/inventory");
+}
+
+export async function generateSelectedMetadataAction(formData: FormData) {
+  const features = getFeatureStatus();
+
+  if (features.database && features.openai) {
+    const productIds = readSelectedProductIds(formData);
+
+    for (const productId of productIds) {
+      await regenerateProductText(productId);
+    }
+  }
+
+  revalidateProductSurfaces();
+  redirect("/inventory");
 }
