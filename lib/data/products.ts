@@ -1,6 +1,6 @@
 import { hasDatabase } from "@/db";
 import { formatPrice, INITIAL_CATEGORIES } from "@/db/products";
-import { getAppSetting, listProducts, listReviewQueue, productPriceAsNumber } from "@/db/queries";
+import { getAppSetting, getProductById, listProducts, listReviewQueue, productPriceAsNumber } from "@/db/queries";
 import { demoInventory, demoSettings } from "@/lib/demo-data";
 
 function toInventoryCard(item: Awaited<ReturnType<typeof listProducts>>[number]) {
@@ -19,6 +19,8 @@ function toInventoryCard(item: Awaited<ReturnType<typeof listProducts>>[number])
     priceCents,
     quantityOnHand: item.quantity,
     status: item.status,
+    aiConfidence: item.aiConfidence === null ? null : Number(item.aiConfidence),
+    createdAt: item.createdAt,
     styledImageUrl:
       primaryImage?.processedUrl ?? primaryImage?.thumbnailUrl ?? primaryImage?.originalUrl ?? "/placeholder.png"
   };
@@ -82,7 +84,9 @@ export async function getReviewQueue() {
       .filter((item) => item.status !== "published")
       .map((item) => ({
         ...item,
-        statusLabel: item.status.replaceAll("_", " ")
+        statusLabel: item.status.replaceAll("_", " "),
+        aiConfidencePercent: null,
+        createdDateLabel: "Demo"
       }));
   }
 
@@ -90,8 +94,45 @@ export async function getReviewQueue() {
 
   return queue.map((item) => ({
     ...item,
-    statusLabel: item.status.replaceAll("_", " ")
+    statusLabel: item.status.replaceAll("_", " "),
+    aiConfidencePercent: item.aiConfidence === null ? null : Math.round(item.aiConfidence * 100),
+    createdDateLabel: new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric"
+    }).format(item.createdAt)
   }));
+}
+
+export async function getReviewProduct(productId: string) {
+  if (!hasDatabase()) {
+    return null;
+  }
+
+  const product = await getProductById(productId);
+  if (!product) {
+    return null;
+  }
+
+  const primaryImage = product.images[0] ?? null;
+  const originalImage =
+    product.images.find((image) => image.imageKind === "original") ?? primaryImage ?? null;
+  const processedImage =
+    product.images.find((image) => image.processedUrl) ?? primaryImage ?? originalImage ?? null;
+
+  return {
+    ...product,
+    priceValue: productPriceAsNumber(product),
+    compareAtPriceValue: product.compareAtPrice ? Number(product.compareAtPrice) : null,
+    aiConfidencePercent: product.aiConfidence === null ? null : Math.round(Number(product.aiConfidence) * 100),
+    originalImage,
+    processedImage,
+    primaryImage,
+    createdDateLabel: new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric"
+    }).format(product.createdAt)
+  };
 }
 
 export async function getSettingsSnapshot() {

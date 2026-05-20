@@ -86,6 +86,38 @@ export const productStatusUpdateSchema = z.object({
   publishedAt: z.date().nullable().optional()
 });
 
+const stringListSchema = z.preprocess((value) => {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}, z.array(z.string().trim().min(1)));
+
+export const productReviewUpdateSchema = z.object({
+  productId: z.string().uuid(),
+  title: z.string().trim().min(1).max(256),
+  description: z.string().trim().min(1),
+  shortDescription: z.string().trim().max(280).nullable().optional(),
+  category: z.string().trim().min(1).max(128),
+  subcategory: z.string().trim().max(128).nullable().optional(),
+  price: priceInputSchema,
+  compareAtPrice: optionalPriceInputSchema,
+  quantity: z.coerce.number().int().min(0),
+  materials: stringListSchema.default([]),
+  colors: stringListSchema.default([]),
+  tags: stringListSchema.default([]),
+  aiNotes: z.string().trim().nullable().optional(),
+  aiConfidence: z.coerce.number().min(0).max(1).nullable().optional()
+});
+
 export const appSettingSchema = z.object({
   key: z.string().trim().min(1).max(128),
   value: z.unknown()

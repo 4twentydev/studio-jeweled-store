@@ -42,7 +42,9 @@ export async function getProductById(productId: string) {
       images: {
         orderBy: [desc(productImages.isPrimary), asc(productImages.createdAt)]
       },
-      aiGenerations: true
+      aiGenerations: {
+        orderBy: [desc(aiGenerations.createdAt)]
+      }
     }
   });
 }

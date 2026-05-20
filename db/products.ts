@@ -4,6 +4,7 @@ import { getProductById } from "@/db/queries";
 import { aiGenerations, productImages, products, type ProductStatus } from "@/db/schema";
 import {
   productDraftSchema,
+  productReviewUpdateSchema,
   productStatusUpdateSchema,
   toNumericValue
 } from "@/db/validators";
@@ -180,6 +181,108 @@ export async function updateProductStatus(
     .where(eq(products.id, parsed.productId));
 
   return getProductById(parsed.productId);
+}
+
+export async function updateProductReviewDraft(input: unknown, options?: { status?: ProductStatus }) {
+  const parsed = productReviewUpdateSchema.parse(input);
+  const db = getDb();
+  const update: Partial<typeof products.$inferInsert> = {
+    title: parsed.title,
+    description: parsed.description,
+    shortDescription: parsed.shortDescription ?? null,
+    category: normalizeCategory(parsed.category),
+    subcategory: parsed.subcategory ?? null,
+    price: toNumericValue(parsed.price) ?? "0.00",
+    compareAtPrice: toNumericValue(parsed.compareAtPrice ?? null),
+    quantity: parsed.quantity,
+    materials: parsed.materials,
+    colors: parsed.colors,
+    tags: parsed.tags,
+    aiNotes: parsed.aiNotes ?? null,
+    aiConfidence: toNumericValue(parsed.aiConfidence ?? null, 3),
+    updatedAt: new Date()
+  };
+
+  if (options?.status) {
+    update.status = options.status;
+  }
+
+  await db
+    .update(products)
+    .set(update)
+    .where(eq(products.id, parsed.productId));
+
+  return getProductById(parsed.productId);
+}
+
+export async function setPrimaryProductImage(input: { productId: string; imageId: string }) {
+  const db = getDb();
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(productImages)
+      .set({
+        isPrimary: false
+      })
+      .where(eq(productImages.productId, input.productId));
+
+    await tx
+      .update(productImages)
+      .set({
+        isPrimary: true
+      })
+      .where(eq(productImages.id, input.imageId));
+
+    await tx
+      .update(products)
+      .set({
+        updatedAt: new Date()
+      })
+      .where(eq(products.id, input.productId));
+  });
+
+  return getProductById(input.productId);
+}
+
+export async function createProcessedProductImage(input: {
+  productId: string;
+  originalImageUrl: string;
+  processedImageUrl: string;
+  thumbnailUrl?: string | null;
+  altText?: string | null;
+  makePrimary?: boolean;
+}) {
+  const db = getDb();
+
+  await db.transaction(async (tx) => {
+    if (input.makePrimary ?? true) {
+      await tx
+        .update(productImages)
+        .set({
+          isPrimary: false
+        })
+        .where(eq(productImages.productId, input.productId));
+    }
+
+    await tx.insert(productImages).values({
+      productId: input.productId,
+      originalUrl: input.originalImageUrl,
+      processedUrl: input.processedImageUrl,
+      thumbnailUrl: input.thumbnailUrl ?? input.processedImageUrl,
+      altText: input.altText ?? null,
+      isPrimary: input.makePrimary ?? true,
+      imageKind: "processed"
+    });
+
+    await tx
+      .update(products)
+      .set({
+        updatedAt: new Date()
+      })
+      .where(eq(products.id, input.productId));
+  });
+
+  return getProductById(input.productId);
 }
 
 export async function createPendingCaptureDraft(input: {
