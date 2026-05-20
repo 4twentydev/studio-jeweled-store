@@ -10,6 +10,7 @@ import {
   failPendingCaptureDraft,
   finalizePendingCaptureDraft,
   saveStylePreset,
+  selectFinalAiGeneration,
   setDefaultStylePreset,
   setPrimaryProductImage,
   updateAiGenerationLog,
@@ -19,12 +20,9 @@ import {
 import { getProductById, getStylePresetById, upsertAppSetting } from "@/db/queries";
 import { productStatuses, type ProductStatus } from "@/db/schema";
 import { studioSettingsSchema, stylePresetInputSchema } from "@/db/validators";
-import {
-  buildMetadataPrompt,
-  generateProductIntelligence,
-  PRODUCT_METADATA_MODEL,
-  PRODUCT_STYLING_MODEL
-} from "@/lib/ai";
+import { buildMetadataPrompt, generateProductIntelligence, PRODUCT_METADATA_MODEL, PRODUCT_STYLING_MODEL } from "@/lib/ai";
+import type { GenerationReviewSnapshot } from "@/lib/ai/generation-history";
+import { generationOptionsSchema, type GenerationOptions } from "@/lib/ai/generation-options";
 import {
   PRODUCT_IMAGE_MODEL,
   generateProductImageVariant,
@@ -131,12 +129,23 @@ function readStylePresetId(formData: FormData) {
   return typeof value === "string" && value.length ? z.string().uuid().parse(value) : null;
 }
 
+function readGenerationOptions(formData: FormData, scope: GenerationOptions["scope"]) {
+  return generationOptionsSchema.parse({
+    scope,
+    creativity: formData.get("creativity"),
+    descriptionTone: formData.get("descriptionTone"),
+    priceStrategy: formData.get("priceStrategy"),
+    humanInstruction: readOptionalString(formData, "humanInstruction"),
+    stylePresetId: readStylePresetId(formData)
+  });
+}
+
 async function saveReviewEdits(formData: FormData, status?: "draft" | "approved") {
   const input = readReviewFormData(formData);
   return updateProductReviewDraft(input, status ? { status } : undefined);
 }
 
-async function regenerateProductText(productId: string) {
+async function regenerateProductMetadataForScope(productId: string, options: GenerationOptions) {
   assertFeatureEnabled("database");
   assertFeatureEnabled("openai");
 
@@ -151,7 +160,9 @@ async function regenerateProductText(productId: string) {
     productId,
     inputImageUrl: originalImageUrl,
     model: PRODUCT_METADATA_MODEL,
-    prompt: "Regenerating product metadata",
+    prompt: `Regenerating product metadata (${options.scope})`,
+    options,
+    humanInstruction: options.humanInstruction,
     status: "pending"
   });
 
@@ -159,38 +170,38 @@ async function regenerateProductText(productId: string) {
     const metadataResult = await generateProductMetadata({
       imageUrl: originalImageUrl,
       filenameHint: `${product.slug || product.id}.png`,
-      ...getProductMetadataPromptContext(product)
+      ...getProductMetadataPromptContext(product, options)
     });
 
-    await updateProductReviewDraft({
-      productId,
-      title: metadataResult.metadata.title,
-      description: metadataResult.metadata.description,
-      shortDescription: metadataResult.metadata.shortDescription,
-      category: metadataResult.metadata.category,
-      subcategory: metadataResult.metadata.subcategory,
-      price: metadataResult.metadata.price,
-      compareAtPrice: metadataResult.metadata.compareAtPrice,
-      quantity: metadataResult.metadata.quantity,
-      materials: metadataResult.metadata.materials,
-      colors: metadataResult.metadata.colors,
-      tags: metadataResult.metadata.tags,
-      aiNotes: metadataResult.metadata.notesForHuman,
-      aiConfidence: metadataResult.metadata.confidence
+    await applyMetadataResultToProduct({
+      product,
+      metadata: metadataResult.metadata,
+      scope: options.scope
     });
 
     await updateAiGenerationLog({
       generationId: generation.id,
       model: metadataResult.model,
       prompt: metadataResult.prompt,
+      options,
+      humanInstruction: options.humanInstruction,
       rawResponse: metadataResult.rawResponse,
-      parsedResponse: metadataResult.metadata,
+      parsedResponse: buildGenerationReviewSnapshot({
+        metadata: metadataResult.metadata
+      }),
       status: "success",
       errorMessage: null
+    });
+
+    await selectFinalAiGeneration({
+      productId,
+      generationId: generation.id
     });
   } catch (error) {
     await updateAiGenerationLog({
       generationId: generation.id,
+      options,
+      humanInstruction: options.humanInstruction,
       status: "failed",
       errorMessage: getErrorMessage(error)
     });
@@ -219,13 +230,130 @@ function getProductImagePromptContext(product: NonNullable<Awaited<ReturnType<ty
   };
 }
 
-function getProductMetadataPromptContext(product: NonNullable<Awaited<ReturnType<typeof getProductById>>>) {
+function getProductImagePromptContextWithOptions(
+  product: NonNullable<Awaited<ReturnType<typeof getProductById>>>,
+  options: Pick<GenerationOptions, "creativity" | "humanInstruction">
+) {
+  return {
+    ...getProductImagePromptContext(product),
+    creativity: options.creativity,
+    humanInstruction: options.humanInstruction
+  };
+}
+
+function getProductMetadataPromptContext(
+  product: NonNullable<Awaited<ReturnType<typeof getProductById>>>,
+  options?: Pick<GenerationOptions, "creativity" | "descriptionTone" | "priceStrategy" | "humanInstruction" | "scope">
+) {
   return {
     itemNameIdea: product.title,
     notes: product.aiNotes ?? undefined,
     materials: product.materials.join(", "),
-    quantity: product.quantity
+    quantity: product.quantity,
+    creativity: options?.creativity,
+    descriptionTone: options?.descriptionTone,
+    priceStrategy: options?.priceStrategy,
+    humanInstruction: options?.humanInstruction,
+    scope: options?.scope
   };
+}
+
+function buildGenerationReviewSnapshot(input: {
+  metadata?: {
+    title: string;
+    description: string;
+    shortDescription: string | null;
+    category: string;
+    subcategory: string | null;
+    price: number;
+    compareAtPrice: number | null;
+    quantity: number;
+    materials: string[];
+    colors: string[];
+    tags: string[];
+    notesForHuman: string;
+    confidence: number;
+  } | null;
+  image?: {
+    originalImageUrl: string;
+    processedImageUrl: string | null;
+    cleanBackgroundImageUrl?: string | null;
+    variant: "primary" | "clean-background";
+  } | null;
+}): GenerationReviewSnapshot {
+  return {
+    metadata: input.metadata
+      ? {
+          title: input.metadata.title,
+          description: input.metadata.description,
+          shortDescription: input.metadata.shortDescription,
+          category: input.metadata.category,
+          subcategory: input.metadata.subcategory,
+          price: input.metadata.price,
+          compareAtPrice: input.metadata.compareAtPrice,
+          quantity: input.metadata.quantity,
+          materials: input.metadata.materials,
+          colors: input.metadata.colors,
+          tags: input.metadata.tags,
+          aiNotes: input.metadata.notesForHuman,
+          aiConfidence: input.metadata.confidence
+        }
+      : null,
+    images: input.image
+      ? {
+          originalImageUrl: input.image.originalImageUrl,
+          processedImageUrl: input.image.processedImageUrl,
+          cleanBackgroundImageUrl: input.image.cleanBackgroundImageUrl ?? null,
+          variant: input.image.variant
+        }
+      : null
+  };
+}
+
+async function applyMetadataResultToProduct(input: {
+  product: NonNullable<Awaited<ReturnType<typeof getProductById>>>;
+  metadata: Awaited<ReturnType<typeof generateProductMetadata>>["metadata"];
+  scope: GenerationOptions["scope"];
+}) {
+  const { product, metadata, scope } = input;
+  const useAllMetadata = scope === "all";
+
+  await updateProductReviewDraft(
+    {
+      productId: product.id,
+      title: scope === "price" || scope === "category_tags" ? product.title : metadata.title,
+      description: scope === "price" || scope === "category_tags" ? product.description : metadata.description,
+      shortDescription:
+        scope === "price" || scope === "category_tags"
+          ? product.shortDescription
+          : metadata.shortDescription,
+      category:
+        scope === "title_description" || scope === "price"
+          ? product.category
+          : metadata.category,
+      subcategory:
+        scope === "title_description" || scope === "price"
+          ? product.subcategory
+          : metadata.subcategory,
+      price:
+        scope === "title_description" || scope === "category_tags"
+          ? Number(product.price)
+          : metadata.price,
+      compareAtPrice:
+        scope === "title_description" || scope === "category_tags"
+          ? product.compareAtPrice === null
+            ? null
+            : Number(product.compareAtPrice)
+          : metadata.compareAtPrice,
+      quantity: useAllMetadata ? metadata.quantity : product.quantity,
+      materials: useAllMetadata ? metadata.materials : product.materials,
+      colors: useAllMetadata ? metadata.colors : product.colors,
+      tags: useAllMetadata || scope === "category_tags" ? metadata.tags : product.tags,
+      aiNotes: metadata.notesForHuman,
+      aiConfidence: metadata.confidence
+    },
+    { status: "review" }
+  );
 }
 
 function revalidateProductSurfaces(productId?: string) {
@@ -353,7 +481,40 @@ export async function ingestProductCapture(_: unknown, formData: FormData) {
       aiPrompt: intelligence.prompt,
       stylePresetId: defaultStylePreset.id,
       rawResponse: JSON.parse(JSON.stringify(intelligence.rawResponse)),
-      parsedResponse: intelligence.metadata
+      parsedResponse: {
+        metadata: {
+          title: intelligence.metadata.title || itemNameIdea || "New product capture",
+          description: intelligence.metadata.description,
+          shortDescription: intelligence.metadata.merchandisingNotes.slice(0, 180),
+          category: intelligence.metadata.category,
+          subcategory: intelligence.metadata.collection,
+          price: 0,
+          compareAtPrice: null,
+          quantity,
+          materials: intelligence.metadata.materials.length
+            ? intelligence.metadata.materials
+            : compactParts([materials]),
+          colors: intelligence.metadata.colorTone ? [intelligence.metadata.colorTone] : [],
+          tags: compactParts([
+            ...intelligence.metadata.tags,
+            intelligence.metadata.finish,
+            intelligence.metadata.dimensions
+          ]),
+          aiNotes: compactParts([intelligence.metadata.merchandisingNotes, captureNotes]).join("\n\n"),
+          aiConfidence: intelligence.metadata.confidence
+        },
+        images: {
+          originalImageUrl: originalUpload.url,
+          processedImageUrl: styledUpload?.url ?? null,
+          cleanBackgroundImageUrl: null,
+          variant: styledUpload?.url ? "primary" : null
+        }
+      }
+    });
+
+    await selectFinalAiGeneration({
+      productId: product.id,
+      generationId: pendingDraft.generationId
     });
 
     const primaryImage = product.images[0];
@@ -492,21 +653,44 @@ export async function replaceProcessedImageAction(formData: FormData) {
 
 export async function regenerateProductTextAction(formData: FormData) {
   const productId = z.string().uuid().parse(formData.get("productId"));
-  await regenerateProductText(productId);
+  await regenerateProductMetadataForScope(productId, readGenerationOptions(formData, "title_description"));
 
   revalidateProductSurfaces(productId);
   redirect(getReviewRedirect(formData, productId));
 }
 
-export async function regenerateProductImageAction(formData: FormData) {
+export async function regenerateProductPriceAction(formData: FormData) {
+  const productId = z.string().uuid().parse(formData.get("productId"));
+  await regenerateProductMetadataForScope(productId, readGenerationOptions(formData, "price"));
+
+  revalidateProductSurfaces(productId);
+  redirect(getReviewRedirect(formData, productId));
+}
+
+export async function regenerateProductCategoryTagsAction(formData: FormData) {
+  const productId = z.string().uuid().parse(formData.get("productId"));
+  await regenerateProductMetadataForScope(productId, readGenerationOptions(formData, "category_tags"));
+
+  revalidateProductSurfaces(productId);
+  redirect(getReviewRedirect(formData, productId));
+}
+
+async function regenerateProductImageWithOptions(input: {
+  productId: string;
+  options: GenerationOptions;
+  useSelectedStylePreset: boolean;
+}) {
   assertFeatureEnabled("database");
   assertFeatureEnabled("openai");
   assertFeatureEnabled("blob");
 
-  const productId = z.string().uuid().parse(formData.get("productId"));
-  const product = await getProductById(productId);
-  const stylePresetId = readStylePresetId(formData);
-  const stylePreset = stylePresetId ? await getStylePresetById(stylePresetId) : await getDefaultStylePresetForGeneration();
+  const product = await getProductById(input.productId);
+  const fallbackStylePreset = await getDefaultStylePresetForGeneration();
+  const stylePreset = input.useSelectedStylePreset
+    ? input.options.stylePresetId
+      ? await getStylePresetById(input.options.stylePresetId)
+      : fallbackStylePreset
+    : product?.aiGenerations.find((generation) => generation.isSelectedFinal)?.stylePreset ?? fallbackStylePreset;
 
   if (!product) {
     throw new Error("Product not found.");
@@ -518,11 +702,13 @@ export async function regenerateProductImageAction(formData: FormData) {
 
   const originalImageUrl = getOriginalImageUrl(product);
   const generation = await createAiGenerationLog({
-    productId,
+    productId: input.productId,
     stylePresetId: stylePreset.id,
     inputImageUrl: originalImageUrl,
     model: PRODUCT_IMAGE_MODEL,
     prompt: "Regenerating processed image",
+    options: input.options,
+    humanInstruction: input.options.humanInstruction,
     status: "pending"
   });
 
@@ -531,7 +717,7 @@ export async function regenerateProductImageAction(formData: FormData) {
       {
         imageUrl: originalImageUrl,
         filenameHint: `${product.slug || product.id}.png`,
-        ...getProductImagePromptContext(product),
+        ...getProductImagePromptContextWithOptions(product, input.options),
         stylePreset
       },
       "primary"
@@ -545,7 +731,7 @@ export async function regenerateProductImageAction(formData: FormData) {
     );
 
     await createProcessedProductImage({
-      productId,
+      productId: input.productId,
       originalImageUrl,
       processedImageUrl: uploadedImage.url,
       thumbnailUrl: uploadedImage.url,
@@ -559,22 +745,58 @@ export async function regenerateProductImageAction(formData: FormData) {
       outputImageUrl: uploadedImage.url,
       model: imageResult.model,
       prompt: imageResult.prompt,
+      options: input.options,
+      humanInstruction: input.options.humanInstruction,
       rawResponse: imageResult.rawResponse,
-      parsedResponse: {
-        productId,
-        variant: imageResult.variant
-      },
+      parsedResponse: buildGenerationReviewSnapshot({
+        image: {
+          originalImageUrl,
+          processedImageUrl: uploadedImage.url,
+          variant: imageResult.variant
+        }
+      }),
       status: "success",
       errorMessage: null
+    });
+
+    await updateProductStatus(input.productId, "review", {
+      publishedAt: null
+    });
+    await selectFinalAiGeneration({
+      productId: input.productId,
+      generationId: generation.id
     });
   } catch (error) {
     await updateAiGenerationLog({
       generationId: generation.id,
+      options: input.options,
+      humanInstruction: input.options.humanInstruction,
       status: "failed",
       errorMessage: getErrorMessage(error)
     });
     throw error;
   }
+}
+
+export async function regenerateProductImageAction(formData: FormData) {
+  const productId = z.string().uuid().parse(formData.get("productId"));
+  await regenerateProductImageWithOptions({
+    productId,
+    options: readGenerationOptions(formData, "image"),
+    useSelectedStylePreset: false
+  });
+
+  revalidateProductSurfaces(productId);
+  redirect(getReviewRedirect(formData, productId));
+}
+
+export async function tryDifferentStylePresetAction(formData: FormData) {
+  const productId = z.string().uuid().parse(formData.get("productId"));
+  await regenerateProductImageWithOptions({
+    productId,
+    options: readGenerationOptions(formData, "image"),
+    useSelectedStylePreset: true
+  });
 
   revalidateProductSurfaces(productId);
   redirect(getReviewRedirect(formData, productId));
@@ -604,6 +826,14 @@ export async function regenerateProductDraftAction(formData: FormData) {
     inputImageUrl: originalImageUrl,
     model: `${PRODUCT_METADATA_MODEL} | ${PRODUCT_IMAGE_MODEL}`,
     prompt: "Regenerating product draft",
+    options: generationOptionsSchema.parse({
+      scope: "all",
+      creativity: "medium",
+      descriptionTone: "clean luxury",
+      priceStrategy: "standard",
+      humanInstruction: null,
+      stylePresetId: stylePreset.id
+    }),
     status: "pending"
   });
 
@@ -612,13 +842,22 @@ export async function regenerateProductDraftAction(formData: FormData) {
       generateProductMetadata({
         imageUrl: originalImageUrl,
         filenameHint: `${product.slug || product.id}.png`,
-        ...getProductMetadataPromptContext(product)
+        ...getProductMetadataPromptContext(product, {
+          scope: "all",
+          creativity: "medium",
+          descriptionTone: "clean luxury",
+          priceStrategy: "standard",
+          humanInstruction: null
+        })
       }),
       generateProductImageVariant(
         {
           imageUrl: originalImageUrl,
           filenameHint: `${product.slug || product.id}.png`,
-          ...getProductImagePromptContext(product),
+          ...getProductImagePromptContextWithOptions(product, {
+            creativity: "medium",
+            humanInstruction: null
+          }),
           stylePreset
         },
         "primary"
@@ -632,22 +871,25 @@ export async function regenerateProductDraftAction(formData: FormData) {
       "processed"
     );
 
-    await updateProductReviewDraft({
-      productId,
-      title: metadataResult.metadata.title,
-      description: metadataResult.metadata.description,
-      shortDescription: metadataResult.metadata.shortDescription,
-      category: metadataResult.metadata.category,
-      subcategory: metadataResult.metadata.subcategory,
-      price: metadataResult.metadata.price,
-      compareAtPrice: metadataResult.metadata.compareAtPrice,
-      quantity: metadataResult.metadata.quantity,
-      materials: metadataResult.metadata.materials,
-      colors: metadataResult.metadata.colors,
-      tags: metadataResult.metadata.tags,
-      aiNotes: metadataResult.metadata.notesForHuman,
-      aiConfidence: metadataResult.metadata.confidence
-    });
+    await updateProductReviewDraft(
+      {
+        productId,
+        title: metadataResult.metadata.title,
+        description: metadataResult.metadata.description,
+        shortDescription: metadataResult.metadata.shortDescription,
+        category: metadataResult.metadata.category,
+        subcategory: metadataResult.metadata.subcategory,
+        price: metadataResult.metadata.price,
+        compareAtPrice: metadataResult.metadata.compareAtPrice,
+        quantity: metadataResult.metadata.quantity,
+        materials: metadataResult.metadata.materials,
+        colors: metadataResult.metadata.colors,
+        tags: metadataResult.metadata.tags,
+        aiNotes: metadataResult.metadata.notesForHuman,
+        aiConfidence: metadataResult.metadata.confidence
+      },
+      { status: "review" }
+    );
 
     await createProcessedProductImage({
       productId,
@@ -664,13 +906,34 @@ export async function regenerateProductDraftAction(formData: FormData) {
       outputImageUrl: uploadedImage.url,
       model: `${metadataResult.model} | ${imageResult.model}`,
       prompt: `${metadataResult.prompt}\n\n---\n\n${imageResult.prompt}`,
+      options: generationOptionsSchema.parse({
+        scope: "all",
+        creativity: "medium",
+        descriptionTone: "clean luxury",
+        priceStrategy: "standard",
+        humanInstruction: null,
+        stylePresetId: stylePreset.id
+      }),
+      humanInstruction: null,
       rawResponse: {
         metadata: metadataResult.rawResponse,
         image: imageResult.rawResponse
       },
-      parsedResponse: metadataResult.metadata,
+      parsedResponse: buildGenerationReviewSnapshot({
+        metadata: metadataResult.metadata,
+        image: {
+          originalImageUrl,
+          processedImageUrl: uploadedImage.url,
+          variant: imageResult.variant
+        }
+      }),
       status: "success",
       errorMessage: null
+    });
+
+    await selectFinalAiGeneration({
+      productId,
+      generationId: generation.id
     });
   } catch (error) {
     await updateAiGenerationLog({
@@ -680,6 +943,71 @@ export async function regenerateProductDraftAction(formData: FormData) {
     });
     throw error;
   }
+
+  revalidateProductSurfaces(productId);
+  redirect(getReviewRedirect(formData, productId));
+}
+
+export async function restoreAiGenerationAction(formData: FormData) {
+  assertFeatureEnabled("database");
+
+  const productId = z.string().uuid().parse(formData.get("productId"));
+  const generationId = z.string().uuid().parse(formData.get("generationId"));
+  const product = await getProductById(productId);
+
+  if (!product) {
+    throw new Error("Product not found.");
+  }
+
+  const generation = product.aiGenerations.find((item) => item.id === generationId);
+
+  if (!generation) {
+    throw new Error("Generation not found.");
+  }
+
+  const snapshot = generation.parsedResponse as GenerationReviewSnapshot | null;
+
+  if (snapshot?.metadata) {
+    await updateProductReviewDraft(
+      {
+        productId,
+        title: snapshot.metadata.title,
+        description: snapshot.metadata.description,
+        shortDescription: snapshot.metadata.shortDescription,
+        category: snapshot.metadata.category,
+        subcategory: snapshot.metadata.subcategory,
+        price: snapshot.metadata.price,
+        compareAtPrice: snapshot.metadata.compareAtPrice,
+        quantity: snapshot.metadata.quantity,
+        materials: snapshot.metadata.materials,
+        colors: snapshot.metadata.colors,
+        tags: snapshot.metadata.tags,
+        aiNotes: snapshot.metadata.aiNotes,
+        aiConfidence: snapshot.metadata.aiConfidence
+      },
+      { status: "review" }
+    );
+  } else {
+    await updateProductStatus(productId, "review", {
+      publishedAt: null
+    });
+  }
+
+  if (snapshot?.images?.processedImageUrl && snapshot.images.originalImageUrl) {
+    await createProcessedProductImage({
+      productId,
+      originalImageUrl: snapshot.images.originalImageUrl,
+      processedImageUrl: snapshot.images.processedImageUrl,
+      thumbnailUrl: snapshot.images.processedImageUrl,
+      altText: snapshot.metadata?.title ?? product.title,
+      makePrimary: true
+    });
+  }
+
+  await selectFinalAiGeneration({
+    productId,
+    generationId
+  });
 
   revalidateProductSurfaces(productId);
   redirect(getReviewRedirect(formData, productId));
@@ -807,7 +1135,17 @@ export async function generateSelectedMetadataAction(formData: FormData) {
     const productIds = readSelectedProductIds(formData);
 
     for (const productId of productIds) {
-      await regenerateProductText(productId);
+      await regenerateProductMetadataForScope(
+        productId,
+        generationOptionsSchema.parse({
+          scope: "all",
+          creativity: "medium",
+          descriptionTone: "clean luxury",
+          priceStrategy: "standard",
+          humanInstruction: null,
+          stylePresetId: null
+        })
+      );
     }
   }
 

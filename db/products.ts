@@ -17,6 +17,7 @@ import {
   productStatusUpdateSchema,
   toNumericValue
 } from "@/db/validators";
+import type { GenerationOptions } from "@/lib/ai/generation-options";
 import { buildSku, formatSkuDate } from "@/lib/labels";
 
 export const INITIAL_CATEGORIES = [
@@ -587,9 +588,13 @@ export async function createAiGenerationLog(input: {
   outputImageUrl?: string | null;
   model: string;
   prompt: string;
+  options?: GenerationOptions | null;
+  humanInstruction?: string | null;
   rawResponse?: unknown;
   parsedResponse?: unknown;
   status?: "pending" | "success" | "failed";
+  isSelectedFinal?: boolean;
+  selectedAt?: Date | null;
   errorMessage?: string | null;
 }) {
   const db = getDb();
@@ -602,9 +607,13 @@ export async function createAiGenerationLog(input: {
       outputImageUrl: input.outputImageUrl ?? null,
       model: input.model,
       prompt: input.prompt,
+      options: input.options ?? null,
+      humanInstruction: input.humanInstruction ?? null,
       rawResponse: input.rawResponse,
       parsedResponse: input.parsedResponse,
       status: input.status ?? "pending",
+      isSelectedFinal: input.isSelectedFinal ?? false,
+      selectedAt: input.selectedAt ?? null,
       errorMessage: input.errorMessage ?? null
     })
     .returning();
@@ -618,9 +627,13 @@ export async function updateAiGenerationLog(input: {
   outputImageUrl?: string | null;
   model?: string;
   prompt?: string;
+  options?: GenerationOptions | null;
+  humanInstruction?: string | null;
   rawResponse?: unknown;
   parsedResponse?: unknown;
   status?: "pending" | "success" | "failed";
+  isSelectedFinal?: boolean;
+  selectedAt?: Date | null;
   errorMessage?: string | null;
 }) {
   const db = getDb();
@@ -629,9 +642,13 @@ export async function updateAiGenerationLog(input: {
     outputImageUrl?: string | null;
     model?: string;
     prompt?: string;
+    options?: GenerationOptions | null;
+    humanInstruction?: string | null;
     rawResponse?: unknown;
     parsedResponse?: unknown;
     status?: "pending" | "success" | "failed";
+    isSelectedFinal?: boolean;
+    selectedAt?: Date | null;
     errorMessage?: string | null;
   } = {};
 
@@ -647,6 +664,12 @@ export async function updateAiGenerationLog(input: {
   if (input.prompt !== undefined) {
     update.prompt = input.prompt;
   }
+  if (input.options !== undefined) {
+    update.options = input.options;
+  }
+  if (input.humanInstruction !== undefined) {
+    update.humanInstruction = input.humanInstruction;
+  }
   if (input.rawResponse !== undefined) {
     update.rawResponse = input.rawResponse;
   }
@@ -655,6 +678,12 @@ export async function updateAiGenerationLog(input: {
   }
   if (input.status !== undefined) {
     update.status = input.status;
+  }
+  if (input.isSelectedFinal !== undefined) {
+    update.isSelectedFinal = input.isSelectedFinal;
+  }
+  if (input.selectedAt !== undefined) {
+    update.selectedAt = input.selectedAt;
   }
   if (input.errorMessage !== undefined) {
     update.errorMessage = input.errorMessage;
@@ -667,6 +696,38 @@ export async function updateAiGenerationLog(input: {
     .returning();
 
   return generation;
+}
+
+export async function selectFinalAiGeneration(input: { productId: string; generationId: string }) {
+  const db = getDb();
+  const now = new Date();
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(aiGenerations)
+      .set({
+        isSelectedFinal: false,
+        selectedAt: null
+      })
+      .where(eq(aiGenerations.productId, input.productId));
+
+    await tx
+      .update(aiGenerations)
+      .set({
+        isSelectedFinal: true,
+        selectedAt: now
+      })
+      .where(eq(aiGenerations.id, input.generationId));
+
+    await tx
+      .update(products)
+      .set({
+        updatedAt: now
+      })
+      .where(eq(products.id, input.productId));
+  });
+
+  return getProductById(input.productId);
 }
 
 export async function saveStylePreset(input: unknown) {

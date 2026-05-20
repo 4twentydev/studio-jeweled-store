@@ -5,6 +5,8 @@ export type ProductImagePromptInput = {
   materials?: string;
   specialDetails?: string;
   notes?: string;
+  creativity?: "low" | "medium" | "high";
+  humanInstruction?: string | null;
 };
 
 type ImageVariant = "primary" | "clean-background";
@@ -39,6 +41,8 @@ export function buildProductImagePrompt(
     `Item name idea: ${input.itemNameIdea?.trim() || "None provided"}`,
     `Materials: ${input.materials?.trim() || "None provided"}`,
     `Special details: ${input.specialDetails?.trim() || "None provided"}`,
-    `Additional notes: ${input.notes?.trim() || "None provided"}`
+    `Additional notes: ${input.notes?.trim() || "None provided"}`,
+    `Creativity level: ${input.creativity ?? "medium"}`,
+    `Human instruction: ${input.humanInstruction?.trim() || "None provided"}`
   ].join("\n");
 }

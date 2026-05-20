@@ -101,9 +101,13 @@ export const aiGenerations = pgTable(
     outputImageUrl: text("output_image_url"),
     model: text("model").notNull(),
     prompt: text("prompt").notNull(),
+    options: jsonb("options").$type<unknown>(),
+    humanInstruction: text("human_instruction"),
     rawResponse: jsonb("raw_response").$type<unknown>(),
     parsedResponse: jsonb("parsed_response").$type<unknown>(),
     status: aiGenerationStatusEnum("status").notNull().default("pending"),
+    isSelectedFinal: boolean("is_selected_final").notNull().default(false),
+    selectedAt: timestamp("selected_at", { withTimezone: true }),
     errorMessage: text("error_message"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
   },

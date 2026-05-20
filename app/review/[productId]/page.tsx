@@ -5,11 +5,15 @@ import {
   approveReviewedProductAction,
   archiveProductAction,
   publishReviewedProductAction,
+  regenerateProductCategoryTagsAction,
   regenerateProductImageAction,
+  regenerateProductPriceAction,
   regenerateProductTextAction,
   replaceProcessedImageAction,
+  restoreAiGenerationAction,
   saveReviewDraftAction,
-  setPrimaryImageAction
+  setPrimaryImageAction,
+  tryDifferentStylePresetAction
 } from "@/app/actions/products";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,10 +22,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { INITIAL_CATEGORIES } from "@/db/products";
+import {
+  creativityLevels,
+  descriptionTones,
+  priceStrategies
+} from "@/lib/ai/generation-options";
+import { formatCurrency } from "@/lib/format";
 import { getReviewProduct, getStylePresetsData } from "@/lib/data/products";
 
 function joinList(values: string[]) {
   return values.join(", ");
+}
+
+function titleCaseOption(value: string) {
+  return value.replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function ConfidenceMeter({ value }: { value: number | null }) {
@@ -275,10 +289,10 @@ export default async function ReviewDetailPage({
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="font-[var(--font-display)] text-2xl">Quick actions</CardTitle>
+              <CardTitle className="font-[var(--font-display)] text-2xl">AI controls</CardTitle>
             </CardHeader>
-            <CardContent className="grid gap-3">
-              <form action={regenerateProductImageAction}>
+            <CardContent className="space-y-4">
+              <form className="space-y-4">
                 <input type="hidden" name="productId" value={product.id} />
                 <input type="hidden" name="redirectTo" value={redirectTo} />
                 <div className="grid gap-3">
@@ -298,17 +312,89 @@ export default async function ReviewDetailPage({
                       ))}
                     </select>
                   </div>
-                  <Button type="submit" variant="outline" className="w-full">
-                    Regenerate Image
-                  </Button>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="creativity">Creativity</Label>
+                      <select
+                        id="creativity"
+                        name="creativity"
+                        defaultValue="medium"
+                        className="h-11 w-full rounded-full border bg-transparent px-4 text-sm outline-none"
+                      >
+                        {creativityLevels.map((level) => (
+                          <option key={level} value={level}>
+                            {titleCaseOption(level)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="priceStrategy">Price strategy</Label>
+                      <select
+                        id="priceStrategy"
+                        name="priceStrategy"
+                        defaultValue="standard"
+                        className="h-11 w-full rounded-full border bg-transparent px-4 text-sm outline-none"
+                      >
+                        {priceStrategies.map((strategy) => (
+                          <option key={strategy} value={strategy}>
+                            {titleCaseOption(strategy)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="descriptionTone">Description tone</Label>
+                    <select
+                      id="descriptionTone"
+                      name="descriptionTone"
+                      defaultValue="clean luxury"
+                      className="h-11 w-full rounded-full border bg-transparent px-4 text-sm outline-none"
+                    >
+                      {descriptionTones.map((tone) => (
+                        <option key={tone} value={tone}>
+                          {titleCaseOption(tone)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="humanInstruction">Human instruction</Label>
+                    <Textarea
+                      id="humanInstruction"
+                      name="humanInstruction"
+                      className="min-h-[140px]"
+                      placeholder={`Make the title more playful
+Price this higher
+Use a cleaner white background
+Make description shorter
+Do not call it a lighter`}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Button formAction={regenerateProductImageAction} type="submit" variant="outline" className="w-full">
+                      Regenerate image
+                    </Button>
+                    <Button formAction={regenerateProductTextAction} type="submit" variant="outline" className="w-full">
+                      Regenerate title/description
+                    </Button>
+                    <Button formAction={regenerateProductPriceAction} type="submit" variant="outline" className="w-full">
+                      Regenerate price only
+                    </Button>
+                    <Button
+                      formAction={regenerateProductCategoryTagsAction}
+                      type="submit"
+                      variant="outline"
+                      className="w-full"
+                    >
+                      Regenerate category/tags only
+                    </Button>
+                    <Button formAction={tryDifferentStylePresetAction} type="submit" variant="outline" className="w-full">
+                      Try different style preset
+                    </Button>
+                  </div>
                 </div>
-              </form>
-              <form action={regenerateProductTextAction}>
-                <input type="hidden" name="productId" value={product.id} />
-                <input type="hidden" name="redirectTo" value={redirectTo} />
-                <Button type="submit" variant="outline" className="w-full">
-                  Regenerate Text
-                </Button>
               </form>
               <form action={archiveProductAction}>
                 <input type="hidden" name="productId" value={product.id} />
@@ -341,45 +427,119 @@ export default async function ReviewDetailPage({
 
           <Card>
             <CardHeader>
-              <CardTitle className="font-[var(--font-display)] text-2xl">AI audit trail</CardTitle>
+              <CardTitle className="font-[var(--font-display)] text-2xl">Current final version</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge>{product.status}</Badge>
+                {product.selectedFinalGeneration ? (
+                  <Badge variant="secondary">AI version selected</Badge>
+                ) : (
+                  <Badge variant="secondary">Manual review state</Badge>
+                )}
+              </div>
+              <div className="rounded-2xl border bg-black/20 p-4">
+                <p className="font-medium">{product.title}</p>
+                <p className="mt-2 text-muted-foreground">{product.description}</p>
+                <div className="mt-3 grid gap-2 text-xs text-muted-foreground">
+                  <p>Price: {formatCurrency(Math.round(product.priceValue * 100))}</p>
+                  <p>Category: {product.category}{product.subcategory ? ` / ${product.subcategory}` : ""}</p>
+                  <p>Tags: {product.tags.length ? joinList(product.tags) : "None"}</p>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Human approval remains required before publishing. AI changes only update the review draft.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-[var(--font-display)] text-2xl">Generation history</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">Every regeneration is logged. Original uploads are kept.</p>
+              <p className="text-sm text-muted-foreground">
+                Every regeneration attempt is saved with prompts, options, and restoreable outputs.
+              </p>
               {product.aiGenerations.length ? (
                 <div className="space-y-3">
                   {product.aiGenerations.map((generation) => (
-                    <div key={generation.id} className="rounded-2xl border bg-black/20 p-4 text-sm">
-                      <div className="flex items-center justify-between gap-3">
-                        <Badge variant={generation.status === "success" ? "default" : "secondary"}>{generation.status}</Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {new Intl.DateTimeFormat("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            hour: "numeric",
-                            minute: "2-digit"
-                          }).format(generation.createdAt)}
-                        </span>
+                    <details key={generation.id} className="rounded-2xl border bg-black/20 p-4 text-sm">
+                      <summary className="cursor-pointer list-none">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant={generation.status === "success" ? "default" : "secondary"}>
+                              {generation.status}
+                            </Badge>
+                            {generation.isSelectedFinal ? <Badge>Selected final</Badge> : null}
+                            <span className="text-xs text-muted-foreground">
+                              {new Intl.DateTimeFormat("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                hour: "numeric",
+                                minute: "2-digit"
+                              }).format(generation.createdAt)}
+                            </span>
+                          </div>
+                          <span className="text-xs text-muted-foreground">Open details</span>
+                        </div>
+                      </summary>
+                      <div className="mt-4 space-y-3">
+                        {generation.stylePreset ? (
+                          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                            Preset: {generation.stylePreset.name}
+                          </p>
+                        ) : null}
+                        {generation.options ? (
+                          <div className="grid gap-1 text-xs text-muted-foreground">
+                            <p>Scope: {generation.options.scope}</p>
+                            <p>Creativity: {generation.options.creativity}</p>
+                            <p>Tone: {generation.options.descriptionTone}</p>
+                            <p>Price strategy: {generation.options.priceStrategy}</p>
+                          </div>
+                        ) : null}
+                        {generation.humanInstruction ? (
+                          <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-muted-foreground">
+                            {generation.humanInstruction}
+                          </div>
+                        ) : null}
+                        {generation.reviewSnapshot?.metadata ? (
+                          <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-muted-foreground">
+                            <p className="font-medium text-foreground">{generation.reviewSnapshot.metadata.title}</p>
+                            <p className="mt-1">
+                              {formatCurrency(Math.round(generation.reviewSnapshot.metadata.price * 100))} ·{" "}
+                              {generation.reviewSnapshot.metadata.category}
+                            </p>
+                          </div>
+                        ) : null}
+                        <p className="text-muted-foreground">{generation.prompt}</p>
+                        <div className="flex flex-wrap gap-3 text-xs">
+                          {generation.outputImageUrl ? (
+                            <a
+                              href={generation.outputImageUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex text-primary transition hover:text-primary/80"
+                            >
+                              Open generated image
+                            </a>
+                          ) : null}
+                          {generation.status === "success" ? (
+                            <form action={restoreAiGenerationAction}>
+                              <input type="hidden" name="productId" value={product.id} />
+                              <input type="hidden" name="generationId" value={generation.id} />
+                              <input type="hidden" name="redirectTo" value={redirectTo} />
+                              <Button type="submit" size="sm" variant="outline">
+                                Restore this version
+                              </Button>
+                            </form>
+                          ) : null}
+                        </div>
+                        {generation.errorMessage ? (
+                          <p className="text-xs text-destructive">{generation.errorMessage}</p>
+                        ) : null}
                       </div>
-                      {generation.stylePreset ? (
-                        <p className="mt-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                          Preset: {generation.stylePreset.name}
-                        </p>
-                      ) : null}
-                      <p className="mt-3 line-clamp-3 text-muted-foreground">{generation.prompt}</p>
-                      {generation.outputImageUrl ? (
-                        <a
-                          href={generation.outputImageUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-3 inline-flex text-xs text-primary transition hover:text-primary/80"
-                        >
-                          Open generated image
-                        </a>
-                      ) : null}
-                      {generation.errorMessage ? (
-                        <p className="mt-3 text-xs text-destructive">{generation.errorMessage}</p>
-                      ) : null}
-                    </div>
+                    </details>
                   ))}
                 </div>
               ) : (

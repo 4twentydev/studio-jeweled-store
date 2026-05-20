@@ -12,6 +12,8 @@ import {
 } from "@/db/queries";
 import { productStatuses, type ProductStatus } from "@/db/schema";
 import { demoInventory, demoSettings } from "@/lib/demo-data";
+import type { GenerationOptions } from "@/lib/ai/generation-options";
+import { parseGenerationReviewSnapshot } from "@/lib/ai/generation-history";
 import { DEFAULT_STYLE_PRESETS } from "@/lib/style-presets";
 
 const LOW_STOCK_THRESHOLD = 3;
@@ -423,6 +425,10 @@ export async function getReviewProduct(productId: string) {
     product.images.find((image) => image.imageKind === "original") ?? primaryImage ?? null;
   const processedImage =
     product.images.find((image) => image.processedUrl) ?? primaryImage ?? originalImage ?? null;
+  const selectedFinalGeneration =
+    product.aiGenerations.find((generation) => generation.isSelectedFinal) ??
+    product.aiGenerations.find((generation) => generation.status === "success") ??
+    null;
 
   return {
     ...product,
@@ -432,6 +438,12 @@ export async function getReviewProduct(productId: string) {
     originalImage,
     processedImage,
     primaryImage,
+    selectedFinalGeneration,
+    aiGenerations: product.aiGenerations.map((generation) => ({
+      ...generation,
+      options: (generation.options ?? null) as GenerationOptions | null,
+      reviewSnapshot: parseGenerationReviewSnapshot(generation.parsedResponse)
+    })),
     latestPublishResult: formatPublishResultMessage(product.publishResults[0] ?? null),
     createdDateLabel: new Intl.DateTimeFormat("en-US", {
       month: "short",

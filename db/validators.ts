@@ -5,11 +5,21 @@ import {
   productConditions,
   productStatuses
 } from "@/db/schema";
+import {
+  creativityLevels,
+  descriptionTones,
+  priceStrategies,
+  regenerationScopes
+} from "@/lib/ai/generation-options";
 
 export const productStatusSchema = z.enum(productStatuses);
 export const productConditionSchema = z.enum(productConditions);
 export const imageKindSchema = z.enum(imageKinds);
 export const aiGenerationStatusSchema = z.enum(aiGenerationStatuses);
+export const creativityLevelSchema = z.enum(creativityLevels);
+export const descriptionToneSchema = z.enum(descriptionTones);
+export const priceStrategySchema = z.enum(priceStrategies);
+export const regenerationScopeSchema = z.enum(regenerationScopes);
 
 const priceInputSchema = z.coerce.number().finite().min(0);
 const optionalPriceInputSchema = z.preprocess((value) => {
