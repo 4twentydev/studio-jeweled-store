@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Gem, Settings, Sparkles, Vault } from "lucide-react";
+import { Gem, Settings, Sparkles, Tags, Vault } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { MobileNav } from "@/components/layout/mobile-nav";
@@ -11,6 +11,7 @@ const navigation = [
   { href: "/", label: "Dashboard", icon: Gem },
   { href: "/capture", label: "Capture", icon: Sparkles },
   { href: "/inventory", label: "Inventory", icon: Vault },
+  { href: "/app/labels", label: "Labels", icon: Tags },
   { href: "/review", label: "Review", icon: Gem },
   { href: "/settings", label: "Settings", icon: Settings }
 ];

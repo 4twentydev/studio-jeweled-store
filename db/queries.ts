@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, like, type SQL } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   aiGenerations,
@@ -63,6 +63,36 @@ export async function getProductById(productId: string) {
       }
     }
   });
+}
+
+export async function listProductsByIds(productIds: string[]) {
+  if (!productIds.length) {
+    return [];
+  }
+
+  const db = getDb();
+  return db.query.products.findMany({
+    where: inArray(products.id, productIds),
+    with: {
+      images: {
+        orderBy: [desc(productImages.isPrimary), asc(productImages.createdAt)]
+      },
+      publishResults: {
+        orderBy: [desc(publishResults.createdAt)],
+        limit: 1
+      }
+    }
+  });
+}
+
+export async function listSkusForDate(dateStamp: string) {
+  const db = getDb();
+  const prefix = `JWLD-%-${dateStamp}-%`;
+
+  return db
+    .select({ sku: products.sku })
+    .from(products)
+    .where(like(products.sku, prefix));
 }
 
 export async function getAiGenerationById(generationId: string) {

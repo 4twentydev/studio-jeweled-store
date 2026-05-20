@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { getProductById } from "@/db/queries";
+import { getProductById, listSkusForDate } from "@/db/queries";
 import {
   aiGenerations,
   productImages,
@@ -17,6 +17,7 @@ import {
   productStatusUpdateSchema,
   toNumericValue
 } from "@/db/validators";
+import { buildSku, formatSkuDate } from "@/lib/labels";
 
 export const INITIAL_CATEGORIES = [
   "Lighters",
@@ -42,9 +43,29 @@ export function generateSlug(input: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-export function generateSku(title = "JWLD") {
-  const base = title.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase() || "JWLD";
-  return `${base}-${randomSuffix(5)}`;
+function parseSkuSequenceForDate(sku: string, dateStamp: string) {
+  const match = sku.match(new RegExp(`^JWLD-[A-Z0-9]+-${dateStamp}-(\\d{4})$`));
+  return match ? Number.parseInt(match[1], 10) : null;
+}
+
+async function generateSku(category: string, date: Date) {
+  const dateStamp = formatSkuDate(date);
+  const skus = await listSkusForDate(dateStamp);
+  const nextSequence =
+    skus.reduce((max, record) => {
+      const sequence = parseSkuSequenceForDate(record.sku, dateStamp);
+      return sequence === null ? max : Math.max(max, sequence);
+    }, 0) + 1;
+
+  return buildSku(category, date, nextSequence);
+}
+
+function isSkuConflict(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.message.includes("products_sku_unique") || error.message.includes("duplicate key");
 }
 
 export function formatPrice(value: number | string) {
@@ -93,67 +114,84 @@ export function normalizeCategory(input: string) {
 export async function createProductDraft(input: unknown) {
   const parsed = productDraftSchema.parse(input);
   const db = getDb();
-  const now = new Date();
+  const category = normalizeCategory(parsed.category);
+  let productId: string | null = null;
 
-  const productId = await db.transaction(async (tx) => {
-    const [insertedProduct] = await tx
-      .insert(products)
-      .values({
-        sku: parsed.sku ?? generateSku(parsed.title),
-        title: parsed.title,
-        slug: parsed.slug ?? `${generateSlug(parsed.title)}-${randomSuffix(4).toLowerCase()}`,
-        description: parsed.description,
-        shortDescription: parsed.shortDescription ?? null,
-        category: normalizeCategory(parsed.category),
-        subcategory: parsed.subcategory ?? null,
-        price: toNumericValue(parsed.price) ?? "0.00",
-        compareAtPrice: toNumericValue(parsed.compareAtPrice),
-        costEstimate: toNumericValue(parsed.costEstimate),
-        quantity: parsed.quantity,
-        status: parsed.status ?? "draft",
-        condition: parsed.condition,
-        materials: parsed.materials,
-        colors: parsed.colors,
-        tags: parsed.tags,
-        aiConfidence: toNumericValue(parsed.aiConfidence, 3),
-        aiNotes: parsed.aiNotes ?? null,
-        createdBy: parsed.createdBy ?? null,
-        approvedBy: parsed.approvedBy ?? null,
-        publishedAt: null,
-        updatedAt: now
-      })
-      .returning({ id: products.id });
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const now = new Date();
 
-    if (parsed.images.length) {
-      await tx.insert(productImages).values(
-        parsed.images.map((image) => ({
-          productId: insertedProduct.id,
-          originalUrl: image.originalUrl,
-          processedUrl: image.processedUrl ?? null,
-          thumbnailUrl: image.thumbnailUrl ?? null,
-          altText: image.altText ?? null,
-          isPrimary: image.isPrimary,
-          imageKind: image.imageKind
-        }))
-      );
-    }
+    try {
+      productId = await db.transaction(async (tx) => {
+        const [insertedProduct] = await tx
+          .insert(products)
+          .values({
+            sku: parsed.sku ?? (await generateSku(category, now)),
+            title: parsed.title,
+            slug: parsed.slug ?? `${generateSlug(parsed.title)}-${randomSuffix(4).toLowerCase()}`,
+            description: parsed.description,
+            shortDescription: parsed.shortDescription ?? null,
+            category,
+            subcategory: parsed.subcategory ?? null,
+            price: toNumericValue(parsed.price) ?? "0.00",
+            compareAtPrice: toNumericValue(parsed.compareAtPrice),
+            costEstimate: toNumericValue(parsed.costEstimate),
+            quantity: parsed.quantity,
+            status: parsed.status ?? "draft",
+            condition: parsed.condition,
+            materials: parsed.materials,
+            colors: parsed.colors,
+            tags: parsed.tags,
+            aiConfidence: toNumericValue(parsed.aiConfidence, 3),
+            aiNotes: parsed.aiNotes ?? null,
+            createdBy: parsed.createdBy ?? null,
+            approvedBy: parsed.approvedBy ?? null,
+            publishedAt: null,
+            updatedAt: now
+          })
+          .returning({ id: products.id });
 
-    if (parsed.aiGeneration) {
-      await tx.insert(aiGenerations).values({
-        productId: insertedProduct.id,
-        inputImageUrl: parsed.aiGeneration.inputImageUrl,
-        outputImageUrl: parsed.aiGeneration.outputImageUrl ?? null,
-        model: parsed.aiGeneration.model,
-        prompt: parsed.aiGeneration.prompt,
-        rawResponse: parsed.aiGeneration.rawResponse,
-        parsedResponse: parsed.aiGeneration.parsedResponse,
-        status: parsed.aiGeneration.status,
-        errorMessage: parsed.aiGeneration.errorMessage ?? null
+        if (parsed.images.length) {
+          await tx.insert(productImages).values(
+            parsed.images.map((image) => ({
+              productId: insertedProduct.id,
+              originalUrl: image.originalUrl,
+              processedUrl: image.processedUrl ?? null,
+              thumbnailUrl: image.thumbnailUrl ?? null,
+              altText: image.altText ?? null,
+              isPrimary: image.isPrimary,
+              imageKind: image.imageKind
+            }))
+          );
+        }
+
+        if (parsed.aiGeneration) {
+          await tx.insert(aiGenerations).values({
+            productId: insertedProduct.id,
+            inputImageUrl: parsed.aiGeneration.inputImageUrl,
+            outputImageUrl: parsed.aiGeneration.outputImageUrl ?? null,
+            model: parsed.aiGeneration.model,
+            prompt: parsed.aiGeneration.prompt,
+            rawResponse: parsed.aiGeneration.rawResponse,
+            parsedResponse: parsed.aiGeneration.parsedResponse,
+            status: parsed.aiGeneration.status,
+            errorMessage: parsed.aiGeneration.errorMessage ?? null
+          });
+        }
+
+        return insertedProduct.id;
       });
-    }
 
-    return insertedProduct.id;
-  });
+      break;
+    } catch (error) {
+      if (!isSkuConflict(error) || parsed.sku) {
+        throw error;
+      }
+    }
+  }
+
+  if (!productId) {
+    throw new Error("Failed to allocate a unique SKU.");
+  }
 
   const product = await getProductById(productId);
   if (!product) {
@@ -334,7 +372,7 @@ export async function createPendingCaptureDraft(input: {
   const now = new Date();
   const productTitle = input.titleHint?.trim() || "New product capture";
   const productSlug = `${generateSlug(productTitle)}-${randomSuffix(4).toLowerCase()}`;
-  const productSku = generateSku(productTitle);
+  const productSku = await generateSku("Accessories", now);
 
   const [result] = await db.transaction(async (tx) => {
     const [insertedProduct] = await tx
@@ -427,66 +465,84 @@ export async function finalizePendingCaptureDraft(input: {
   parsedResponse?: unknown;
 }) {
   const db = getDb();
-  const now = new Date();
+  const category = normalizeCategory(input.category);
+  let finalized = false;
 
-  await db.transaction(async (tx) => {
-    await tx
-      .update(products)
-      .set({
-        sku: generateSku(input.title),
-        slug: `${generateSlug(input.title)}-${randomSuffix(4).toLowerCase()}`,
-        title: input.title,
-        description: input.description,
-        shortDescription: input.shortDescription ?? null,
-        category: normalizeCategory(input.category),
-        subcategory: input.subcategory ?? null,
-        price: toNumericValue(input.price ?? 0) ?? "0.00",
-        quantity: input.quantity,
-        status: "review",
-        condition: "handmade",
-        materials: input.materials,
-        colors: input.colors,
-        tags: input.tags,
-        aiConfidence: toNumericValue(input.aiConfidence ?? null, 3),
-        aiNotes: input.aiNotes ?? null,
-        updatedAt: now
-      })
-      .where(eq(products.id, input.productId));
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const now = new Date();
 
-    await tx
-      .update(productImages)
-      .set({
-        altText: input.title,
-        isPrimary: !input.processedImageUrl
-      })
-      .where(eq(productImages.productId, input.productId));
+    try {
+      await db.transaction(async (tx) => {
+        await tx
+          .update(products)
+          .set({
+            sku: await generateSku(category, now),
+            slug: `${generateSlug(input.title)}-${randomSuffix(4).toLowerCase()}`,
+            title: input.title,
+            description: input.description,
+            shortDescription: input.shortDescription ?? null,
+            category,
+            subcategory: input.subcategory ?? null,
+            price: toNumericValue(input.price ?? 0) ?? "0.00",
+            quantity: input.quantity,
+            status: "review",
+            condition: "handmade",
+            materials: input.materials,
+            colors: input.colors,
+            tags: input.tags,
+            aiConfidence: toNumericValue(input.aiConfidence ?? null, 3),
+            aiNotes: input.aiNotes ?? null,
+            updatedAt: now
+          })
+          .where(eq(products.id, input.productId));
 
-    if (input.processedImageUrl) {
-      await tx.insert(productImages).values({
-        productId: input.productId,
-        originalUrl: input.originalImageUrl,
-        processedUrl: input.processedImageUrl,
-        thumbnailUrl: input.thumbnailUrl ?? input.processedImageUrl,
-        altText: input.title,
-        isPrimary: true,
-        imageKind: "processed"
+        await tx
+          .update(productImages)
+          .set({
+            altText: input.title,
+            isPrimary: !input.processedImageUrl
+          })
+          .where(eq(productImages.productId, input.productId));
+
+        if (input.processedImageUrl) {
+          await tx.insert(productImages).values({
+            productId: input.productId,
+            originalUrl: input.originalImageUrl,
+            processedUrl: input.processedImageUrl,
+            thumbnailUrl: input.thumbnailUrl ?? input.processedImageUrl,
+            altText: input.title,
+            isPrimary: true,
+            imageKind: "processed"
+          });
+        }
+
+        await tx
+          .update(aiGenerations)
+          .set({
+            outputImageUrl: input.processedImageUrl ?? null,
+            model: input.aiModel,
+            prompt: input.aiPrompt,
+            stylePresetId: input.stylePresetId ?? null,
+            rawResponse: input.rawResponse,
+            parsedResponse: input.parsedResponse,
+            status: "success",
+            errorMessage: null
+          })
+          .where(eq(aiGenerations.id, input.generationId));
       });
-    }
 
-    await tx
-      .update(aiGenerations)
-      .set({
-        outputImageUrl: input.processedImageUrl ?? null,
-        model: input.aiModel,
-        prompt: input.aiPrompt,
-        stylePresetId: input.stylePresetId ?? null,
-        rawResponse: input.rawResponse,
-        parsedResponse: input.parsedResponse,
-        status: "success",
-        errorMessage: null
-      })
-      .where(eq(aiGenerations.id, input.generationId));
-  });
+      finalized = true;
+      break;
+    } catch (error) {
+      if (!isSkuConflict(error)) {
+        throw error;
+      }
+    }
+  }
+
+  if (!finalized) {
+    throw new Error("Failed to allocate a unique SKU.");
+  }
 
   const product = await getProductById(input.productId);
   if (!product) {

@@ -40,6 +40,10 @@ body {
   font-feature-settings: "rlig" 1, "calt" 1;
 }
 
+img {
+  max-width: 100%;
+}
+
 ::selection {
   background: rgba(242, 223, 188, 0.2);
 }
@@ -85,4 +89,40 @@ body {
     linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
   background-size: 32px 32px;
+}
+
+@media print {
+  html {
+    background: #fff;
+    color: #000;
+  }
+
+  body {
+    background: #fff;
+    color: #000;
+  }
+
+  aside,
+  header,
+  .print\\:hidden {
+    display: none !important;
+  }
+
+  main {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0.25in !important;
+  }
+
+  .label-sheet {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.18in;
+  }
+
+  .label-card {
+    min-height: 2in;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    box-shadow: none !important;
+  }
 }

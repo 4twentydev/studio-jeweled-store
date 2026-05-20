@@ -35,7 +35,7 @@ export function MobileNav({ items }: { items: NavItem[] }) {
       </nav>
 
       <nav className="fixed inset-x-4 bottom-4 z-30 rounded-[1.75rem] border bg-black/70 p-2 shadow-2xl backdrop-blur lg:hidden">
-        <div className="grid grid-cols-5 gap-1">
+        <div className="grid grid-cols-6 gap-1">
           {items.map((item) => {
             const active = item.href === "/" ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (

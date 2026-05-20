@@ -258,6 +258,23 @@ export default async function InventoryProductPage({
           </Card>
 
           <Card>
+            <CardHeader>
+              <CardTitle className="font-[var(--font-display)] text-2xl">Labels</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3">
+              <Button asChild>
+                <Link href={`/app/labels/${product.id}`}>Generate product label</Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href={`/app/labels?productIds=${product.id}`}>Add to batch print sheet</Link>
+              </Button>
+              <p className="text-sm text-muted-foreground">
+                Build a printable tag with title, SKU, price, category, and QR code for physical inventory labeling.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-3">
               <CardTitle className="font-[var(--font-display)] text-2xl">Image gallery manager</CardTitle>
             </CardHeader>

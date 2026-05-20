@@ -6,6 +6,7 @@ const envSchema = z.object({
   OPENAI_API_KEY: z.string().optional(),
   BLOB_READ_WRITE_TOKEN: z.string().optional(),
   JWLD_PUBLISH_MODE: z.enum(["shared_db", "api_push", "export"]).default("export"),
+  JWLD_STOREFRONT_URL: z.string().url().optional(),
   JWLD_STORE_API_URL: z.string().url().optional(),
   JWLD_STORE_API_KEY: z.string().optional()
 });
@@ -16,6 +17,7 @@ export const env = envSchema.parse({
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
   JWLD_PUBLISH_MODE: process.env.JWLD_PUBLISH_MODE ?? "export",
+  JWLD_STOREFRONT_URL: process.env.JWLD_STOREFRONT_URL,
   JWLD_STORE_API_URL: process.env.JWLD_STORE_API_URL,
   JWLD_STORE_API_KEY: process.env.JWLD_STORE_API_KEY
 });

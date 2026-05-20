@@ -78,6 +78,7 @@ cp .env.example .env.local
 - `OPENAI_API_KEY`
 - `BLOB_READ_WRITE_TOKEN`
 - `JWLD_PUBLISH_MODE` to select `shared_db`, `api_push`, or `export`
+- `JWLD_STOREFRONT_URL` to generate public QR destinations for published products
 - `JWLD_STORE_API_URL` and `JWLD_STORE_API_KEY` for future JWLD.store API publishing
 
 4. Generate and push the database schema:
@@ -158,6 +159,7 @@ Example payload:
 - `OPENAI_API_KEY`
 - `BLOB_READ_WRITE_TOKEN`
 - `JWLD_PUBLISH_MODE`
+- `JWLD_STOREFRONT_URL`
 - `JWLD_STORE_API_URL`
 - `JWLD_STORE_API_KEY`
 

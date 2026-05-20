@@ -151,7 +151,12 @@ export default async function InventoryPage({
           </p>
         </div>
         <div className="rounded-[1.75rem] border bg-white/4 px-4 py-3 text-sm text-muted-foreground">
-          Showing {filteredCount} of {totalItems} products
+          <div>Showing {filteredCount} of {totalItems} products</div>
+          <div className="mt-2">
+            <Link href="/app/labels" className="text-primary transition hover:text-primary/80">
+              Open label generator
+            </Link>
+          </div>
         </div>
       </div>
 
