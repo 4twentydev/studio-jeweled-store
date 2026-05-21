@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { hasDatabase } from "@/db";
 import { saveStylePreset } from "@/db/products";
 import { formatPrice, INITIAL_CATEGORIES } from "@/db/products";
@@ -14,6 +15,15 @@ import { productStatuses, type ProductStatus } from "@/db/schema";
 import { demoInventory, demoSettings } from "@/lib/demo-data";
 import type { GenerationOptions } from "@/lib/ai/generation-options";
 import { parseGenerationReviewSnapshot } from "@/lib/ai/generation-history";
+import { env } from "@/lib/env";
+import {
+  defaultStudioSettings,
+  STUDIO_SETTINGS_CACHE_TAG,
+  STUDIO_SETTINGS_SETTING_KEY,
+  STORE_API_KEY_SETTING_KEY,
+  studioSettingsSchema,
+  type StudioSettings
+} from "@/lib/studio-settings";
 import { DEFAULT_STYLE_PRESETS } from "@/lib/style-presets";
 
 const LOW_STOCK_THRESHOLD = 3;
@@ -517,25 +527,84 @@ export async function getInventoryProduct(productId: string) {
 
 export async function getSettingsSnapshot() {
   if (!hasDatabase()) {
-    return demoSettings;
+    return {
+      settings: demoSettings,
+      hasStoreApiKey: false,
+      currencyPreview: formatPrice(125)
+    };
   }
 
-  const [brandVoice, defaultMarkupPercent, defaultCollection, publishMode] = await Promise.all([
+  return getCachedSettingsSnapshot();
+}
+
+async function getLegacySettingsFallback(): Promise<StudioSettings> {
+  const [brandVoice, defaultMarkupPercent, defaultCollection, publishMode, categories] = await Promise.all([
     getAppSetting<string>("brandVoice"),
     getAppSetting<number>("defaultMarkupPercent"),
     getAppSetting<string>("defaultCollection"),
-    getAppSetting<string>("publishMode")
+    getAppSetting<string>("publishMode"),
+    getAppSetting<string[]>("productCategories")
   ]);
 
   return {
-    brandVoice: brandVoice ?? demoSettings.brandVoice,
-    defaultMarkupPercent: defaultMarkupPercent ?? demoSettings.defaultMarkupPercent,
-    defaultCollection: defaultCollection ?? demoSettings.defaultCollection,
-    publishMode: publishMode ?? demoSettings.publishMode,
-    categories: (await getAppSetting<string[]>("productCategories")) ?? [...INITIAL_CATEGORIES],
-    currencyPreview: formatPrice(125)
+    ...defaultStudioSettings,
+    brandVoice: {
+      ...defaultStudioSettings.brandVoice,
+      productDescriptionPrompt: brandVoice ?? defaultStudioSettings.brandVoice.productDescriptionPrompt,
+      defaultTone: defaultCollection ?? defaultStudioSettings.brandVoice.defaultTone
+    },
+    pricingRules: {
+      ...defaultStudioSettings.pricingRules,
+      defaultCompareAtMarkupPercent:
+        defaultMarkupPercent ?? defaultStudioSettings.pricingRules.defaultCompareAtMarkupPercent
+    },
+    publishing: {
+      ...defaultStudioSettings.publishing,
+      publishMode:
+        publishMode === "shared_db" || publishMode === "api_push" || publishMode === "export"
+          ? publishMode
+          : defaultStudioSettings.publishing.publishMode,
+      storeApiUrl: env.JWLD_STORE_API_URL ?? defaultStudioSettings.publishing.storeApiUrl
+    },
+    categories: {
+      categories: categories?.length ? categories : [...INITIAL_CATEGORIES],
+      subcategories: defaultStudioSettings.categories.subcategories.filter((entry) =>
+        (categories?.length ? categories : INITIAL_CATEGORIES).includes(entry.category)
+      )
+    }
   };
 }
+
+const getCachedSettingsSnapshot = unstable_cache(
+  async () => {
+    const [storedSettings, hasStoredApiKey, defaultStylePreset] = await Promise.all([
+      getAppSetting<unknown>(STUDIO_SETTINGS_SETTING_KEY),
+      getAppSetting<string>(STORE_API_KEY_SETTING_KEY),
+      getDefaultStylePreset()
+    ]);
+
+    const parsed = studioSettingsSchema.safeParse(storedSettings);
+    const settings = parsed.success ? parsed.data : await getLegacySettingsFallback();
+
+    return {
+      settings: {
+        ...settings,
+        imageStyle: {
+          ...settings.imageStyle,
+          defaultStylePresetId: defaultStylePreset?.id ?? settings.imageStyle.defaultStylePresetId
+        },
+        publishing: {
+          ...settings.publishing,
+          storeApiUrl: settings.publishing.storeApiUrl ?? env.JWLD_STORE_API_URL ?? null
+        }
+      },
+      hasStoreApiKey: Boolean(hasStoredApiKey || env.JWLD_STORE_API_KEY),
+      currencyPreview: formatPrice(125)
+    };
+  },
+  ["studio-settings-snapshot"],
+  { tags: [STUDIO_SETTINGS_CACHE_TAG] }
+);
 
 export async function getStylePresetsData() {
   if (!hasDatabase()) {

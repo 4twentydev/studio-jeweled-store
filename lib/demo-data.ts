@@ -44,9 +44,55 @@ export const demoInventory = [
 ];
 
 export const demoSettings = {
-  brandVoice:
-    "Elegant, intimate, and quietly luxurious. Descriptions should highlight the handmade nature, tactility, and styling versatility of each piece.",
-  defaultMarkupPercent: 62,
-  defaultCollection: "Core",
-  publishMode: "Manual review required"
+  brandVoice: {
+    productDescriptionPrompt:
+      "Write product descriptions for a boutique studio catalog. Emphasize craft, material detail, finish, and collector appeal while keeping the tone concise and premium.",
+    defaultTone: "Elevated and tactile",
+    wordsToPrefer: ["handmade", "collector", "polished", "boutique"],
+    wordsToAvoid: ["cheap", "perfect", "generic", "mass-market"],
+    exampleProductDescriptions: [
+      "Crystal-detailed lighter case with a polished handmade finish, balanced sparkle, and a boutique display presence.",
+      "Compact accessory with tactile texture, clean structure, and an elevated studio presentation for everyday carry."
+    ]
+  },
+  pricingRules: {
+    categoryBasePrices: [
+      { category: "Lighters", value: 48 },
+      { category: "Accessories", value: 32 },
+      { category: "One-of-One", value: 120 }
+    ],
+    complexityMultipliers: [
+      { label: "Simple", multiplier: 1 },
+      { label: "Detailed", multiplier: 1.25 },
+      { label: "Collector", multiplier: 1.5 }
+    ],
+    oneOfOneMarkupPercent: 30,
+    minimumPrice: 24,
+    defaultCompareAtMarkupPercent: 18
+  },
+  imageStyle: {
+    defaultStylePresetId: "JWLD Clean Black",
+    outputSize: "1024x1024",
+    backgroundPreference: "Luxury studio backdrop with restrained contrast",
+    cropPreference: "Centered catalog crop"
+  },
+  publishing: {
+    publishMode: "export" as const,
+    storeApiUrl: null,
+    exportFormat: "csv" as const,
+    exportFilenamePrefix: "jwld-store",
+    exportIncludeImages: true
+  },
+  categories: {
+    categories: ["Lighters", "Accessories", "One-of-One"],
+    subcategories: [
+      { category: "Accessories", subcategory: "Bracelets" },
+      { category: "Accessories", subcategory: "Rings" }
+    ]
+  },
+  users: [
+    { name: "Studio Admin", role: "admin" as const },
+    { name: "Primary Creator", role: "creator" as const },
+    { name: "Review Queue", role: "reviewer" as const }
+  ]
 };

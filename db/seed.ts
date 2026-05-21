@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { appSettings, stylePresets } from "@/db/schema";
+import { defaultStudioSettings, STUDIO_SETTINGS_SETTING_KEY } from "@/lib/studio-settings";
 import { DEFAULT_STYLE_PRESETS } from "@/lib/style-presets";
 
 const initialCategories = [
@@ -14,6 +15,10 @@ const initialCategories = [
 ] as const;
 
 const defaultSettings = [
+  {
+    key: STUDIO_SETTINGS_SETTING_KEY,
+    value: defaultStudioSettings
+  },
   {
     key: "brandVoice",
     value:

@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import {
@@ -19,7 +19,7 @@ import {
 } from "@/db/products";
 import { getProductById, getStylePresetById, upsertAppSetting } from "@/db/queries";
 import { productStatuses, type ProductStatus } from "@/db/schema";
-import { studioSettingsSchema, stylePresetInputSchema } from "@/db/validators";
+import { stylePresetInputSchema } from "@/db/validators";
 import { buildMetadataPrompt, generateProductIntelligence, PRODUCT_METADATA_MODEL, PRODUCT_STYLING_MODEL } from "@/lib/ai";
 import type { GenerationReviewSnapshot } from "@/lib/ai/generation-history";
 import { generationOptionsSchema, type GenerationOptions } from "@/lib/ai/generation-options";
@@ -32,6 +32,12 @@ import {
 import { assertFeatureEnabled, getFeatureStatus } from "@/lib/env";
 import { getDefaultStylePresetForGeneration } from "@/lib/data/products";
 import { publishProduct } from "@/lib/publishing/publisher";
+import {
+  STUDIO_SETTINGS_CACHE_TAG,
+  STUDIO_SETTINGS_SETTING_KEY,
+  STORE_API_KEY_SETTING_KEY,
+  studioSettingsSchema
+} from "@/lib/studio-settings";
 import { uploadFileToBlob, uploadStyledBufferToBlob } from "@/lib/blob";
 
 const captureSchema = z.object({
@@ -89,6 +95,84 @@ function readOptionalString(formData: FormData, key: string) {
 
   const trimmed = value.trim();
   return trimmed.length ? trimmed : null;
+}
+
+function readRequiredString(formData: FormData, key: string) {
+  const value = formData.get(key);
+
+  if (typeof value !== "string") {
+    throw new Error(`Missing field: ${key}`);
+  }
+
+  return value;
+}
+
+function parseLineList(value: string) {
+  return value
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseExampleDescriptionBlocks(value: string) {
+  return value
+    .split(/\n\s*---\s*\n/g)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseCategoryValueLines(value: string) {
+  return parseLineList(value).map((line) => {
+    const [category, amount, ...extra] = line.split("|").map((part) => part.trim());
+
+    if (!category || !amount || extra.length > 0) {
+      throw new Error(`Invalid category base price line: "${line}"`);
+    }
+
+    return {
+      category,
+      value: Number(amount)
+    };
+  });
+}
+
+function parseComplexityMultiplierLines(value: string) {
+  return parseLineList(value).map((line) => {
+    const [label, multiplier, ...extra] = line.split("|").map((part) => part.trim());
+
+    if (!label || !multiplier || extra.length > 0) {
+      throw new Error(`Invalid complexity multiplier line: "${line}"`);
+    }
+
+    return {
+      label,
+      multiplier: Number(multiplier)
+    };
+  });
+}
+
+function parseSubcategoryLines(value: string) {
+  return parseLineList(value).map((line) => {
+    const [category, subcategory, ...extra] = line.split("|").map((part) => part.trim());
+
+    if (!category || !subcategory || extra.length > 0) {
+      throw new Error(`Invalid subcategory line: "${line}"`);
+    }
+
+    return { category, subcategory };
+  });
+}
+
+function parseUserLines(value: string) {
+  return parseLineList(value).map((line) => {
+    const [name, role, ...extra] = line.split("|").map((part) => part.trim());
+
+    if (!name || !role || extra.length > 0) {
+      throw new Error(`Invalid user line: "${line}"`);
+    }
+
+    return { name, role };
+  });
 }
 
 function readReviewFormData(formData: FormData) {
@@ -1014,26 +1098,61 @@ export async function restoreAiGenerationAction(formData: FormData) {
 }
 
 export async function saveStudioSettingsAction(formData: FormData) {
+  assertFeatureEnabled("database");
+
   const parsed = studioSettingsSchema.parse({
-    brandVoice: formData.get("brandVoice"),
-    defaultMarkupPercent: formData.get("defaultMarkupPercent"),
-    defaultCollection: formData.get("defaultCollection"),
-    publishMode: formData.get("publishMode")
+    brandVoice: {
+      productDescriptionPrompt: readRequiredString(formData, "productDescriptionPrompt"),
+      defaultTone: readRequiredString(formData, "defaultTone"),
+      wordsToPrefer: parseLineList(readRequiredString(formData, "wordsToPrefer")),
+      wordsToAvoid: parseLineList(readRequiredString(formData, "wordsToAvoid")),
+      exampleProductDescriptions: parseExampleDescriptionBlocks(
+        readRequiredString(formData, "exampleProductDescriptions")
+      )
+    },
+    pricingRules: {
+      categoryBasePrices: parseCategoryValueLines(readRequiredString(formData, "categoryBasePrices")),
+      complexityMultipliers: parseComplexityMultiplierLines(readRequiredString(formData, "complexityMultipliers")),
+      oneOfOneMarkupPercent: Number(readRequiredString(formData, "oneOfOneMarkupPercent")),
+      minimumPrice: Number(readRequiredString(formData, "minimumPrice")),
+      defaultCompareAtMarkupPercent: Number(readRequiredString(formData, "defaultCompareAtMarkupPercent"))
+    },
+    imageStyle: {
+      defaultStylePresetId: readRequiredString(formData, "defaultStylePresetId"),
+      outputSize: readRequiredString(formData, "outputSize"),
+      backgroundPreference: readRequiredString(formData, "backgroundPreference"),
+      cropPreference: readRequiredString(formData, "cropPreference")
+    },
+    publishing: {
+      publishMode: readRequiredString(formData, "publishMode"),
+      storeApiUrl: readOptionalString(formData, "storeApiUrl"),
+      exportFormat: readRequiredString(formData, "exportFormat"),
+      exportFilenamePrefix: readRequiredString(formData, "exportFilenamePrefix"),
+      exportIncludeImages: formData.get("exportIncludeImages") === "on"
+    },
+    categories: {
+      categories: parseLineList(readRequiredString(formData, "categories")),
+      subcategories: parseSubcategoryLines(readRequiredString(formData, "subcategories"))
+    },
+    users: parseUserLines(readRequiredString(formData, "users"))
   });
 
+  const storeApiKey = readOptionalString(formData, "storeApiKey");
+
   await Promise.all([
-    upsertAppSetting("brandVoice", parsed.brandVoice),
-    upsertAppSetting("defaultMarkupPercent", parsed.defaultMarkupPercent),
-    upsertAppSetting("defaultCollection", parsed.defaultCollection),
-    upsertAppSetting("publishMode", parsed.publishMode)
+    upsertAppSetting(STUDIO_SETTINGS_SETTING_KEY, parsed),
+    setDefaultStylePreset(parsed.imageStyle.defaultStylePresetId),
+    storeApiKey ? upsertAppSetting(STORE_API_KEY_SETTING_KEY, storeApiKey) : Promise.resolve()
   ]);
 
+  revalidateTag(STUDIO_SETTINGS_CACHE_TAG);
   revalidatePath("/settings");
+  revalidatePath("/app/settings");
 }
 
 export async function saveStylePresetAction(formData: FormData) {
   if (!getFeatureStatus().database) {
-    redirect("/settings/style-presets");
+    redirect("/app/settings/style-presets");
   }
 
   const parsed = stylePresetInputSchema.parse({
@@ -1050,21 +1169,27 @@ export async function saveStylePresetAction(formData: FormData) {
   });
 
   await saveStylePreset(parsed);
+  revalidateTag(STUDIO_SETTINGS_CACHE_TAG);
   revalidatePath("/settings");
+  revalidatePath("/app/settings");
   revalidatePath("/settings/style-presets");
-  redirect("/settings/style-presets");
+  revalidatePath("/app/settings/style-presets");
+  redirect("/app/settings/style-presets");
 }
 
 export async function setDefaultStylePresetAction(formData: FormData) {
   if (!getFeatureStatus().database) {
-    redirect("/settings/style-presets");
+    redirect("/app/settings/style-presets");
   }
 
   const stylePresetId = z.string().uuid().parse(formData.get("stylePresetId"));
   await setDefaultStylePreset(stylePresetId);
+  revalidateTag(STUDIO_SETTINGS_CACHE_TAG);
   revalidatePath("/settings");
+  revalidatePath("/app/settings");
   revalidatePath("/settings/style-presets");
-  redirect("/settings/style-presets");
+  revalidatePath("/app/settings/style-presets");
+  redirect("/app/settings/style-presets");
 }
 
 export async function saveInventoryProductAction(formData: FormData) {

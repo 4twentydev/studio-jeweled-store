@@ -13,7 +13,7 @@ const navigation = [
   { href: "/inventory", label: "Inventory", icon: Vault },
   { href: "/app/labels", label: "Labels", icon: Tags },
   { href: "/review", label: "Review", icon: Gem },
-  { href: "/settings", label: "Settings", icon: Settings }
+  { href: "/app/settings", label: "Settings", icon: Settings }
 ];
 
 function isActivePath(pathname: string, href: string) {

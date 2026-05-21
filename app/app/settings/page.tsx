@@ -1,5 +1,5 @@
 import { SettingsPageContent } from "@/components/settings/settings-page";
 
-export default function SettingsPage() {
+export default function AppSettingsPage() {
   return <SettingsPageContent />;
 }
