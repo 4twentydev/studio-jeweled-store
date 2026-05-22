@@ -1146,7 +1146,7 @@ export async function saveStudioSettingsAction(formData: FormData) {
     storeApiKey ? upsertAppSetting(STORE_API_KEY_SETTING_KEY, storeApiKey) : Promise.resolve()
   ]);
 
-  revalidateTag(STUDIO_SETTINGS_CACHE_TAG);
+  revalidateTag(STUDIO_SETTINGS_CACHE_TAG, "max");
   revalidatePath("/settings");
   revalidatePath("/app/settings");
 }
@@ -1170,7 +1170,7 @@ export async function saveStylePresetAction(formData: FormData) {
   });
 
   await saveStylePreset(parsed);
-  revalidateTag(STUDIO_SETTINGS_CACHE_TAG);
+  revalidateTag(STUDIO_SETTINGS_CACHE_TAG, "max");
   revalidatePath("/settings");
   revalidatePath("/app/settings");
   revalidatePath("/settings/style-presets");
@@ -1185,7 +1185,7 @@ export async function setDefaultStylePresetAction(formData: FormData) {
 
   const stylePresetId = z.string().uuid().parse(formData.get("stylePresetId"));
   await setDefaultStylePreset(stylePresetId);
-  revalidateTag(STUDIO_SETTINGS_CACHE_TAG);
+  revalidateTag(STUDIO_SETTINGS_CACHE_TAG, "max");
   revalidatePath("/settings");
   revalidatePath("/app/settings");
   revalidatePath("/settings/style-presets");
