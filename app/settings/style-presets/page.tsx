@@ -1,5 +1,5 @@
-import { StylePresetsPageContent } from "@/components/settings/style-presets-page";
+import { redirect } from "next/navigation";
 
 export default function StylePresetsPage() {
-  return <StylePresetsPageContent />;
+  redirect("/app/settings/style-presets");
 }

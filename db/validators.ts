@@ -133,13 +133,6 @@ export const appSettingSchema = z.object({
   value: z.unknown()
 });
 
-export const studioSettingsSchema = z.object({
-  brandVoice: z.string().trim().min(10),
-  defaultMarkupPercent: z.coerce.number().min(0),
-  defaultCollection: z.string().trim().min(1),
-  publishMode: z.string().trim().min(1)
-});
-
 export const productCategoriesSchema = z.array(z.string().trim().min(1));
 
 const exampleImageUrlsSchema = z.preprocess((value) => {

@@ -617,26 +617,39 @@ export async function getStylePresetsData() {
     };
   }
 
+  await ensureStylePresets();
+  return getCachedStylePresetsData();
+}
+
+async function ensureStylePresets() {
   let presets = await listStylePresets();
 
-  if (presets.length === 0) {
-    for (const preset of DEFAULT_STYLE_PRESETS) {
-      await saveStylePreset({
-        ...preset,
-        presetId: null
-      });
-    }
-
-    presets = await listStylePresets();
+  if (presets.length > 0) {
+    return;
   }
 
-  const defaultPreset = presets.find((preset) => preset.isDefault) ?? (await getDefaultStylePreset()) ?? presets[0];
-
-  return {
-    presets,
-    defaultPresetId: defaultPreset?.id ?? null
-  };
+  for (const preset of DEFAULT_STYLE_PRESETS) {
+    await saveStylePreset({
+      ...preset,
+      presetId: null
+    });
+  }
 }
+
+const getCachedStylePresetsData = unstable_cache(
+  async () => {
+    const presets = await listStylePresets();
+    const defaultPreset =
+      presets.find((preset) => preset.isDefault) ?? (await getDefaultStylePreset()) ?? presets[0];
+
+    return {
+      presets,
+      defaultPresetId: defaultPreset?.id ?? null
+    };
+  },
+  ["studio-style-presets"],
+  { tags: [STUDIO_SETTINGS_CACHE_TAG] }
+);
 
 export async function getDefaultStylePresetForGeneration() {
   if (!hasDatabase()) {

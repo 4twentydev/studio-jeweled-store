@@ -4,41 +4,10 @@ import { appSettings, stylePresets } from "@/db/schema";
 import { defaultStudioSettings, STUDIO_SETTINGS_SETTING_KEY } from "@/lib/studio-settings";
 import { DEFAULT_STYLE_PRESETS } from "@/lib/style-presets";
 
-const initialCategories = [
-  "Lighters",
-  "Lighter Cases",
-  "Containers",
-  "Lip Balm Holders",
-  "Accessories",
-  "Custom Pieces",
-  "One-of-One"
-] as const;
-
 const defaultSettings = [
   {
     key: STUDIO_SETTINGS_SETTING_KEY,
     value: defaultStudioSettings
-  },
-  {
-    key: "brandVoice",
-    value:
-      "Elegant, intimate, and quietly luxurious. Focus on handmade craftsmanship, tactile materials, and collectible character."
-  },
-  {
-    key: "defaultMarkupPercent",
-    value: 62
-  },
-  {
-    key: "defaultCollection",
-    value: "Core"
-  },
-  {
-    key: "publishMode",
-    value: "Manual review required"
-  },
-  {
-    key: "productCategories",
-    value: [...initialCategories]
   }
 ] as const;
 
