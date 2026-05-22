@@ -41,7 +41,10 @@ for (const preset of DEFAULT_STYLE_PRESETS) {
     continue;
   }
 
-  await db.insert(stylePresets).values(preset);
+  await db.insert(stylePresets).values({
+    ...preset,
+    exampleImageUrls: [...preset.exampleImageUrls]
+  });
 }
 
 console.log("Seed complete.");
