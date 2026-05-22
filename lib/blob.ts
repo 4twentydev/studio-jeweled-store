@@ -15,7 +15,7 @@ export async function uploadStyledBufferToBlob(
   contentType: string,
   folder = "styled"
 ) {
-  const blob = await put(`${folder}/${Date.now()}-${filename}`, buffer, {
+  const blob = await put(`${folder}/${Date.now()}-${filename}`, Buffer.from(buffer), {
     access: "public",
     addRandomSuffix: true,
     contentType
