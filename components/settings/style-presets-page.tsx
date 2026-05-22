@@ -21,7 +21,7 @@ function PresetForm({
     shadowPrompt: string;
     cropRatio: string;
     outputSize: string;
-    exampleImageUrls: string[];
+    exampleImageUrls: readonly string[];
     isDefault: boolean;
   };
   isDefault: boolean;
