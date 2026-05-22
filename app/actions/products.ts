@@ -499,7 +499,8 @@ export async function ingestProductCapture(_: unknown, formData: FormData) {
     imageFile: image,
     titleHint: itemNameIdea,
     notes: captureNotes,
-    materials
+    materials,
+    stylePreset: defaultStylePreset
   });
 
   const originalUpload = await uploadFileToBlob(image, "originals");
