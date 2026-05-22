@@ -154,7 +154,7 @@ function toDemoInventoryCard(
   const createdAt = buildDemoDate(index + 9);
   const updatedAt = buildDemoDate(index + 1);
   const isPublished = item.status === "published";
-  const isSold = item.status === "sold" || item.quantityOnHand === 0;
+  const isSold = item.quantityOnHand === 0;
 
   return {
     id: item.id,
