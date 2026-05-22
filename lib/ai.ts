@@ -83,7 +83,8 @@ export async function generateProductIntelligence(input: GenerateProductIntellig
           },
           {
             type: "input_image",
-            image_url: imageDataUrl
+            image_url: imageDataUrl,
+            detail: "auto"
           }
         ]
       }
