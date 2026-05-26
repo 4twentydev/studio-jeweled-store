@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+const databaseUrl =
+  process.env.DATABASE_URL ||
+  process.env.POSTGRES_URL ||
+  process.env.POSTGRES_PRISMA_URL ||
+  process.env.POSTGRES_URL_NON_POOLING;
+
 const envSchema = z.object({
   APP_URL: z.string().url().default("http://localhost:3000"),
   DATABASE_URL: z.string().optional(),
@@ -15,7 +21,7 @@ const envSchema = z.object({
 
 export const env = envSchema.parse({
   APP_URL: process.env.APP_URL ?? "http://localhost:3000",
-  DATABASE_URL: process.env.DATABASE_URL,
+  DATABASE_URL: databaseUrl,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
   JWLD_PUBLISH_MODE: process.env.JWLD_PUBLISH_MODE ?? "export",

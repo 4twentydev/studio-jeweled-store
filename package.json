@@ -5,12 +5,13 @@
   "packageManager": "bun@1.2.15",
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build",
+    "build": "bun run db:migrate:if-configured && next build",
     "start": "next start",
     "lint": "biome check .",
     "format": "biome check --write .",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:migrate:if-configured": "bun run scripts/migrate-if-configured.mjs",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "bun run db/seed.ts"
