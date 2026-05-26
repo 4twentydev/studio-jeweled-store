@@ -1,7 +1,7 @@
-import type { ReactNode } from "react";
+import { AppShell } from "@/components/layout/app-shell";
 import type { Metadata } from "next";
 import { Cormorant_Garamond, Manrope } from "next/font/google";
-import { AppShell } from "@/components/layout/app-shell";
+import type { ReactNode } from "react";
 import "./globals.css";
 
 const displayFont = Cormorant_Garamond({

@@ -1,12 +1,9 @@
 "use server";
 
-import { revalidatePath, revalidateTag } from "next/cache";
-import { redirect } from "next/navigation";
-import { z } from "zod";
 import {
   createAiGenerationLog,
-  createProcessedProductImage,
   createPendingCaptureDraft,
+  createProcessedProductImage,
   failPendingCaptureDraft,
   finalizePendingCaptureDraft,
   saveStylePreset,
@@ -17,28 +14,43 @@ import {
   updateProductReviewDraft,
   updateProductStatus
 } from "@/db/products";
-import { getProductById, getStylePresetById, upsertAppSetting } from "@/db/queries";
-import { productStatuses, type ProductStatus } from "@/db/schema";
+import {
+  getProductById,
+  getStylePresetById,
+  upsertAppSetting
+} from "@/db/queries";
+import { type ProductStatus, productStatuses } from "@/db/schema";
 import { stylePresetInputSchema } from "@/db/validators";
-import { buildMetadataPrompt, generateProductIntelligence, PRODUCT_METADATA_MODEL, PRODUCT_STYLING_MODEL } from "@/lib/ai";
+import {
+  PRODUCT_METADATA_MODEL,
+  PRODUCT_STYLING_MODEL,
+  buildMetadataPrompt,
+  generateProductIntelligence
+} from "@/lib/ai";
 import type { GenerationReviewSnapshot } from "@/lib/ai/generation-history";
-import { generationOptionsSchema, type GenerationOptions } from "@/lib/ai/generation-options";
+import {
+  type GenerationOptions,
+  generationOptionsSchema
+} from "@/lib/ai/generation-options";
 import {
   PRODUCT_IMAGE_MODEL,
   generateProductImageVariant,
   generateProductMetadata,
   getErrorMessage
 } from "@/lib/ai/openai";
-import { assertFeatureEnabled, getFeatureStatus } from "@/lib/env";
+import { uploadFileToBlob, uploadStyledBufferToBlob } from "@/lib/blob";
 import { getDefaultStylePresetForGeneration } from "@/lib/data/products";
+import { assertFeatureEnabled, getFeatureStatus } from "@/lib/env";
 import { publishProduct } from "@/lib/publishing/publisher";
 import {
+  STORE_API_KEY_SETTING_KEY,
   STUDIO_SETTINGS_CACHE_TAG,
   STUDIO_SETTINGS_SETTING_KEY,
-  STORE_API_KEY_SETTING_KEY,
   studioSettingsSchema
 } from "@/lib/studio-settings";
-import { uploadFileToBlob, uploadStyledBufferToBlob } from "@/lib/blob";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { redirect } from "next/navigation";
+import { z } from "zod";
 
 const captureSchema = z.object({
   itemNameIdea: z.string().trim().max(120).optional().or(z.literal("")),
@@ -50,7 +62,9 @@ const captureSchema = z.object({
 });
 
 function compactParts(parts: Array<string | null | undefined>) {
-  return parts.map((part) => part?.trim()).filter((part): part is string => Boolean(part));
+  return parts
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part));
 }
 
 function buildCaptureNotes(input: {
@@ -64,7 +78,9 @@ function buildCaptureNotes(input: {
     input.itemNameIdea ? `Item name idea: ${input.itemNameIdea}` : null,
     input.materials ? `Materials: ${input.materials}` : null,
     `Quantity: ${input.quantity}`,
-    input.estimatedTimeSpent ? `Estimated time spent: ${input.estimatedTimeSpent}` : null,
+    input.estimatedTimeSpent
+      ? `Estimated time spent: ${input.estimatedTimeSpent}`
+      : null,
     input.specialDetails ? `Special details: ${input.specialDetails}` : null
   ]).join("\n");
 }
@@ -79,12 +95,16 @@ function getCaptureFailureMessage(error: unknown) {
 
 function getReviewRedirect(formData: FormData, productId: string) {
   const redirectTo = formData.get("redirectTo");
-  return typeof redirectTo === "string" && redirectTo.startsWith("/") ? redirectTo : `/review/${productId}`;
+  return typeof redirectTo === "string" && redirectTo.startsWith("/")
+    ? redirectTo
+    : `/review/${productId}`;
 }
 
 function getSafeRedirect(formData: FormData, fallback: string) {
   const redirectTo = formData.get("redirectTo");
-  return typeof redirectTo === "string" && redirectTo.startsWith("/") ? redirectTo : fallback;
+  return typeof redirectTo === "string" && redirectTo.startsWith("/")
+    ? redirectTo
+    : fallback;
 }
 
 function readOptionalString(formData: FormData, key: string) {
@@ -123,7 +143,9 @@ function parseExampleDescriptionBlocks(value: string) {
 
 function parseCategoryValueLines(value: string) {
   return parseLineList(value).map((line) => {
-    const [category, amount, ...extra] = line.split("|").map((part) => part.trim());
+    const [category, amount, ...extra] = line
+      .split("|")
+      .map((part) => part.trim());
 
     if (!category || !amount || extra.length > 0) {
       throw new Error(`Invalid category base price line: "${line}"`);
@@ -138,7 +160,9 @@ function parseCategoryValueLines(value: string) {
 
 function parseComplexityMultiplierLines(value: string) {
   return parseLineList(value).map((line) => {
-    const [label, multiplier, ...extra] = line.split("|").map((part) => part.trim());
+    const [label, multiplier, ...extra] = line
+      .split("|")
+      .map((part) => part.trim());
 
     if (!label || !multiplier || extra.length > 0) {
       throw new Error(`Invalid complexity multiplier line: "${line}"`);
@@ -153,7 +177,9 @@ function parseComplexityMultiplierLines(value: string) {
 
 function parseSubcategoryLines(value: string) {
   return parseLineList(value).map((line) => {
-    const [category, subcategory, ...extra] = line.split("|").map((part) => part.trim());
+    const [category, subcategory, ...extra] = line
+      .split("|")
+      .map((part) => part.trim());
 
     if (!category || !subcategory || extra.length > 0) {
       throw new Error(`Invalid subcategory line: "${line}"`);
@@ -186,8 +212,12 @@ function readReviewFormData(formData: FormData) {
     price: formData.get("price"),
     compareAtPrice: formData.get("compareAtPrice"),
     quantity: formData.get("quantity"),
-    materials: typeof formData.get("materials") === "string" ? formData.get("materials") : "",
-    colors: typeof formData.get("colors") === "string" ? formData.get("colors") : "",
+    materials:
+      typeof formData.get("materials") === "string"
+        ? formData.get("materials")
+        : "",
+    colors:
+      typeof formData.get("colors") === "string" ? formData.get("colors") : "",
     tags: typeof formData.get("tags") === "string" ? formData.get("tags") : "",
     aiNotes: readOptionalString(formData, "aiNotes"),
     aiConfidence: formData.get("aiConfidence")
@@ -201,7 +231,9 @@ function readInventoryStatus(formData: FormData) {
     return null;
   }
 
-  return productStatuses.includes(status as ProductStatus) ? (status as ProductStatus) : null;
+  return productStatuses.includes(status as ProductStatus)
+    ? (status as ProductStatus)
+    : null;
 }
 
 function readSelectedProductIds(formData: FormData) {
@@ -210,10 +242,15 @@ function readSelectedProductIds(formData: FormData) {
 
 function readStylePresetId(formData: FormData) {
   const value = formData.get("stylePresetId");
-  return typeof value === "string" && value.length ? z.string().uuid().parse(value) : null;
+  return typeof value === "string" && value.length
+    ? z.string().uuid().parse(value)
+    : null;
 }
 
-function readGenerationOptions(formData: FormData, scope: GenerationOptions["scope"]) {
+function readGenerationOptions(
+  formData: FormData,
+  scope: GenerationOptions["scope"]
+) {
   return generationOptionsSchema.parse({
     scope,
     creativity: formData.get("creativity"),
@@ -224,12 +261,18 @@ function readGenerationOptions(formData: FormData, scope: GenerationOptions["sco
   });
 }
 
-async function saveReviewEdits(formData: FormData, status?: "draft" | "approved") {
+async function saveReviewEdits(
+  formData: FormData,
+  status?: "draft" | "approved"
+) {
   const input = readReviewFormData(formData);
   return updateProductReviewDraft(input, status ? { status } : undefined);
 }
 
-async function regenerateProductMetadataForScope(productId: string, options: GenerationOptions) {
+async function regenerateProductMetadataForScope(
+  productId: string,
+  options: GenerationOptions
+) {
   assertFeatureEnabled("database");
   assertFeatureEnabled("openai");
 
@@ -293,7 +336,9 @@ async function regenerateProductMetadataForScope(productId: string, options: Gen
   }
 }
 
-function getOriginalImageUrl(product: NonNullable<Awaited<ReturnType<typeof getProductById>>>) {
+function getOriginalImageUrl(
+  product: NonNullable<Awaited<ReturnType<typeof getProductById>>>
+) {
   const originalImage =
     product.images.find((image) => image.imageKind === "original") ??
     product.images.find((image) => Boolean(image.originalUrl));
@@ -305,7 +350,9 @@ function getOriginalImageUrl(product: NonNullable<Awaited<ReturnType<typeof getP
   return originalImage.originalUrl;
 }
 
-function getProductImagePromptContext(product: NonNullable<Awaited<ReturnType<typeof getProductById>>>) {
+function getProductImagePromptContext(
+  product: NonNullable<Awaited<ReturnType<typeof getProductById>>>
+) {
   return {
     itemNameIdea: product.title,
     materials: product.materials.join(", "),
@@ -327,7 +374,14 @@ function getProductImagePromptContextWithOptions(
 
 function getProductMetadataPromptContext(
   product: NonNullable<Awaited<ReturnType<typeof getProductById>>>,
-  options?: Pick<GenerationOptions, "creativity" | "descriptionTone" | "priceStrategy" | "humanInstruction" | "scope">
+  options?: Pick<
+    GenerationOptions,
+    | "creativity"
+    | "descriptionTone"
+    | "priceStrategy"
+    | "humanInstruction"
+    | "scope"
+  >
 ) {
   return {
     itemNameIdea: product.title,
@@ -405,8 +459,14 @@ async function applyMetadataResultToProduct(input: {
   await updateProductReviewDraft(
     {
       productId: product.id,
-      title: scope === "price" || scope === "category_tags" ? product.title : metadata.title,
-      description: scope === "price" || scope === "category_tags" ? product.description : metadata.description,
+      title:
+        scope === "price" || scope === "category_tags"
+          ? product.title
+          : metadata.title,
+      description:
+        scope === "price" || scope === "category_tags"
+          ? product.description
+          : metadata.description,
       shortDescription:
         scope === "price" || scope === "category_tags"
           ? product.shortDescription
@@ -432,7 +492,10 @@ async function applyMetadataResultToProduct(input: {
       quantity: useAllMetadata ? metadata.quantity : product.quantity,
       materials: useAllMetadata ? metadata.materials : product.materials,
       colors: useAllMetadata ? metadata.colors : product.colors,
-      tags: useAllMetadata || scope === "category_tags" ? metadata.tags : product.tags,
+      tags:
+        useAllMetadata || scope === "category_tags"
+          ? metadata.tags
+          : product.tags,
       aiNotes: metadata.notesForHuman,
       aiConfidence: metadata.confidence
     },
@@ -484,10 +547,19 @@ export async function ingestProductCapture(_: unknown, formData: FormData) {
   const defaultStylePreset = await getDefaultStylePresetForGeneration();
 
   if (!defaultStylePreset) {
-    throw new Error("A default style preset is required before capturing products.");
+    throw new Error(
+      "A default style preset is required before capturing products."
+    );
   }
 
-  const { image, itemNameIdea, materials, quantity, estimatedTimeSpent, specialDetails } = parsed.data;
+  const {
+    image,
+    itemNameIdea,
+    materials,
+    quantity,
+    estimatedTimeSpent,
+    specialDetails
+  } = parsed.data;
   const captureNotes = buildCaptureNotes({
     itemNameIdea,
     materials,
@@ -523,16 +595,19 @@ export async function ingestProductCapture(_: unknown, formData: FormData) {
       stylePreset: defaultStylePreset
     });
 
-    const slugBase = intelligence.metadata.title || itemNameIdea || "product-capture";
+    const slugBase =
+      intelligence.metadata.title || itemNameIdea || "product-capture";
     const styledUpload = intelligence.styledImageBuffer
       ? await uploadStyledBufferToBlob(
-          `${slugBase
-            .normalize("NFKD")
-            .replace(/[^\w\s-]/g, "")
-            .trim()
-            .toLowerCase()
-            .replace(/[\s_-]+/g, "-")
-            .replace(/^-+|-+$/g, "") || "product-capture"}.png`,
+          `${
+            slugBase
+              .normalize("NFKD")
+              .replace(/[^\w\s-]/g, "")
+              .trim()
+              .toLowerCase()
+              .replace(/[\s_-]+/g, "-")
+              .replace(/^-+|-+$/g, "") || "product-capture"
+          }.png`,
           intelligence.styledImageBuffer,
           intelligence.styledImageContentType
         )
@@ -541,7 +616,8 @@ export async function ingestProductCapture(_: unknown, formData: FormData) {
     const product = await finalizePendingCaptureDraft({
       productId: pendingDraft.productId,
       generationId: pendingDraft.generationId,
-      title: intelligence.metadata.title || itemNameIdea || "New product capture",
+      title:
+        intelligence.metadata.title || itemNameIdea || "New product capture",
       description: intelligence.metadata.description,
       shortDescription: intelligence.metadata.merchandisingNotes.slice(0, 180),
       category: intelligence.metadata.category,
@@ -551,14 +627,19 @@ export async function ingestProductCapture(_: unknown, formData: FormData) {
       materials: intelligence.metadata.materials.length
         ? intelligence.metadata.materials
         : compactParts([materials]),
-      colors: intelligence.metadata.colorTone ? [intelligence.metadata.colorTone] : [],
+      colors: intelligence.metadata.colorTone
+        ? [intelligence.metadata.colorTone]
+        : [],
       tags: compactParts([
         ...intelligence.metadata.tags,
         intelligence.metadata.finish,
         intelligence.metadata.dimensions
       ]),
       aiConfidence: intelligence.metadata.confidence,
-      aiNotes: compactParts([intelligence.metadata.merchandisingNotes, captureNotes]).join("\n\n"),
+      aiNotes: compactParts([
+        intelligence.metadata.merchandisingNotes,
+        captureNotes
+      ]).join("\n\n"),
       originalImageUrl: originalUpload.url,
       processedImageUrl: styledUpload?.url ?? null,
       thumbnailUrl: styledUpload?.url ?? null,
@@ -568,9 +649,15 @@ export async function ingestProductCapture(_: unknown, formData: FormData) {
       rawResponse: JSON.parse(JSON.stringify(intelligence.rawResponse)),
       parsedResponse: {
         metadata: {
-          title: intelligence.metadata.title || itemNameIdea || "New product capture",
+          title:
+            intelligence.metadata.title ||
+            itemNameIdea ||
+            "New product capture",
           description: intelligence.metadata.description,
-          shortDescription: intelligence.metadata.merchandisingNotes.slice(0, 180),
+          shortDescription: intelligence.metadata.merchandisingNotes.slice(
+            0,
+            180
+          ),
           category: intelligence.metadata.category,
           subcategory: intelligence.metadata.collection,
           price: 0,
@@ -579,13 +666,18 @@ export async function ingestProductCapture(_: unknown, formData: FormData) {
           materials: intelligence.metadata.materials.length
             ? intelligence.metadata.materials
             : compactParts([materials]),
-          colors: intelligence.metadata.colorTone ? [intelligence.metadata.colorTone] : [],
+          colors: intelligence.metadata.colorTone
+            ? [intelligence.metadata.colorTone]
+            : [],
           tags: compactParts([
             ...intelligence.metadata.tags,
             intelligence.metadata.finish,
             intelligence.metadata.dimensions
           ]),
-          aiNotes: compactParts([intelligence.metadata.merchandisingNotes, captureNotes]).join("\n\n"),
+          aiNotes: compactParts([
+            intelligence.metadata.merchandisingNotes,
+            captureNotes
+          ]).join("\n\n"),
           aiConfidence: intelligence.metadata.confidence
         },
         images: {
@@ -616,7 +708,11 @@ export async function ingestProductCapture(_: unknown, formData: FormData) {
       product: {
         id: product.id,
         title: product.title,
-        styledImageUrl: primaryImage?.processedUrl ?? primaryImage?.thumbnailUrl ?? primaryImage?.originalUrl ?? ""
+        styledImageUrl:
+          primaryImage?.processedUrl ??
+          primaryImage?.thumbnailUrl ??
+          primaryImage?.originalUrl ??
+          ""
       }
     };
   } catch (error) {
@@ -660,7 +756,8 @@ export async function publishProductAction(formData: FormData) {
 
 export async function saveReviewDraftAction(formData: FormData) {
   const product = await saveReviewEdits(formData, "draft");
-  const productId = product?.id ?? z.string().uuid().parse(formData.get("productId"));
+  const productId =
+    product?.id ?? z.string().uuid().parse(formData.get("productId"));
 
   revalidateProductSurfaces(productId);
   redirect(getReviewRedirect(formData, productId));
@@ -668,7 +765,8 @@ export async function saveReviewDraftAction(formData: FormData) {
 
 export async function approveReviewedProductAction(formData: FormData) {
   const product = await saveReviewEdits(formData, "approved");
-  const productId = product?.id ?? z.string().uuid().parse(formData.get("productId"));
+  const productId =
+    product?.id ?? z.string().uuid().parse(formData.get("productId"));
 
   revalidateProductSurfaces(productId);
   redirect(getReviewRedirect(formData, productId));
@@ -676,7 +774,8 @@ export async function approveReviewedProductAction(formData: FormData) {
 
 export async function publishReviewedProductAction(formData: FormData) {
   const savedProduct = await saveReviewEdits(formData);
-  const productId = savedProduct?.id ?? z.string().uuid().parse(formData.get("productId"));
+  const productId =
+    savedProduct?.id ?? z.string().uuid().parse(formData.get("productId"));
   await publishProduct(productId);
 
   revalidateProductSurfaces(productId);
@@ -738,7 +837,10 @@ export async function replaceProcessedImageAction(formData: FormData) {
 
 export async function regenerateProductTextAction(formData: FormData) {
   const productId = z.string().uuid().parse(formData.get("productId"));
-  await regenerateProductMetadataForScope(productId, readGenerationOptions(formData, "title_description"));
+  await regenerateProductMetadataForScope(
+    productId,
+    readGenerationOptions(formData, "title_description")
+  );
 
   revalidateProductSurfaces(productId);
   redirect(getReviewRedirect(formData, productId));
@@ -746,7 +848,10 @@ export async function regenerateProductTextAction(formData: FormData) {
 
 export async function regenerateProductPriceAction(formData: FormData) {
   const productId = z.string().uuid().parse(formData.get("productId"));
-  await regenerateProductMetadataForScope(productId, readGenerationOptions(formData, "price"));
+  await regenerateProductMetadataForScope(
+    productId,
+    readGenerationOptions(formData, "price")
+  );
 
   revalidateProductSurfaces(productId);
   redirect(getReviewRedirect(formData, productId));
@@ -754,7 +859,10 @@ export async function regenerateProductPriceAction(formData: FormData) {
 
 export async function regenerateProductCategoryTagsAction(formData: FormData) {
   const productId = z.string().uuid().parse(formData.get("productId"));
-  await regenerateProductMetadataForScope(productId, readGenerationOptions(formData, "category_tags"));
+  await regenerateProductMetadataForScope(
+    productId,
+    readGenerationOptions(formData, "category_tags")
+  );
 
   revalidateProductSurfaces(productId);
   redirect(getReviewRedirect(formData, productId));
@@ -775,7 +883,8 @@ async function regenerateProductImageWithOptions(input: {
     ? input.options.stylePresetId
       ? await getStylePresetById(input.options.stylePresetId)
       : fallbackStylePreset
-    : product?.aiGenerations.find((generation) => generation.isSelectedFinal)?.stylePreset ?? fallbackStylePreset;
+    : (product?.aiGenerations.find((generation) => generation.isSelectedFinal)
+        ?.stylePreset ?? fallbackStylePreset);
 
   if (!product) {
     throw new Error("Product not found.");
@@ -1044,7 +1153,9 @@ export async function restoreAiGenerationAction(formData: FormData) {
     throw new Error("Product not found.");
   }
 
-  const generation = product.aiGenerations.find((item) => item.id === generationId);
+  const generation = product.aiGenerations.find(
+    (item) => item.id === generationId
+  );
 
   if (!generation) {
     throw new Error("Generation not found.");
@@ -1103,37 +1214,61 @@ export async function saveStudioSettingsAction(formData: FormData) {
 
   const parsed = studioSettingsSchema.parse({
     brandVoice: {
-      productDescriptionPrompt: readRequiredString(formData, "productDescriptionPrompt"),
+      productDescriptionPrompt: readRequiredString(
+        formData,
+        "productDescriptionPrompt"
+      ),
       defaultTone: readRequiredString(formData, "defaultTone"),
-      wordsToPrefer: parseLineList(readRequiredString(formData, "wordsToPrefer")),
+      wordsToPrefer: parseLineList(
+        readRequiredString(formData, "wordsToPrefer")
+      ),
       wordsToAvoid: parseLineList(readRequiredString(formData, "wordsToAvoid")),
       exampleProductDescriptions: parseExampleDescriptionBlocks(
         readRequiredString(formData, "exampleProductDescriptions")
       )
     },
     pricingRules: {
-      categoryBasePrices: parseCategoryValueLines(readRequiredString(formData, "categoryBasePrices")),
-      complexityMultipliers: parseComplexityMultiplierLines(readRequiredString(formData, "complexityMultipliers")),
-      oneOfOneMarkupPercent: Number(readRequiredString(formData, "oneOfOneMarkupPercent")),
+      categoryBasePrices: parseCategoryValueLines(
+        readRequiredString(formData, "categoryBasePrices")
+      ),
+      complexityMultipliers: parseComplexityMultiplierLines(
+        readRequiredString(formData, "complexityMultipliers")
+      ),
+      oneOfOneMarkupPercent: Number(
+        readRequiredString(formData, "oneOfOneMarkupPercent")
+      ),
       minimumPrice: Number(readRequiredString(formData, "minimumPrice")),
-      defaultCompareAtMarkupPercent: Number(readRequiredString(formData, "defaultCompareAtMarkupPercent"))
+      defaultCompareAtMarkupPercent: Number(
+        readRequiredString(formData, "defaultCompareAtMarkupPercent")
+      )
     },
     imageStyle: {
-      defaultStylePresetId: readRequiredString(formData, "defaultStylePresetId"),
+      defaultStylePresetId: readRequiredString(
+        formData,
+        "defaultStylePresetId"
+      ),
       outputSize: readRequiredString(formData, "outputSize"),
-      backgroundPreference: readRequiredString(formData, "backgroundPreference"),
+      backgroundPreference: readRequiredString(
+        formData,
+        "backgroundPreference"
+      ),
       cropPreference: readRequiredString(formData, "cropPreference")
     },
     publishing: {
       publishMode: readRequiredString(formData, "publishMode"),
       storeApiUrl: readOptionalString(formData, "storeApiUrl"),
       exportFormat: readRequiredString(formData, "exportFormat"),
-      exportFilenamePrefix: readRequiredString(formData, "exportFilenamePrefix"),
+      exportFilenamePrefix: readRequiredString(
+        formData,
+        "exportFilenamePrefix"
+      ),
       exportIncludeImages: formData.get("exportIncludeImages") === "on"
     },
     categories: {
       categories: parseLineList(readRequiredString(formData, "categories")),
-      subcategories: parseSubcategoryLines(readRequiredString(formData, "subcategories"))
+      subcategories: parseSubcategoryLines(
+        readRequiredString(formData, "subcategories")
+      )
     },
     users: parseUserLines(readRequiredString(formData, "users"))
   });
@@ -1143,7 +1278,9 @@ export async function saveStudioSettingsAction(formData: FormData) {
   await Promise.all([
     upsertAppSetting(STUDIO_SETTINGS_SETTING_KEY, parsed),
     setDefaultStylePreset(parsed.imageStyle.defaultStylePresetId),
-    storeApiKey ? upsertAppSetting(STORE_API_KEY_SETTING_KEY, storeApiKey) : Promise.resolve()
+    storeApiKey
+      ? upsertAppSetting(STORE_API_KEY_SETTING_KEY, storeApiKey)
+      : Promise.resolve()
   ]);
 
   revalidateTag(STUDIO_SETTINGS_CACHE_TAG, "max");
@@ -1220,7 +1357,11 @@ export async function approveSelectedProductsAction(formData: FormData) {
     const productIds = readSelectedProductIds(formData);
 
     if (productIds.length) {
-      await Promise.all(productIds.map((productId) => updateProductStatus(productId, "approved")));
+      await Promise.all(
+        productIds.map((productId) =>
+          updateProductStatus(productId, "approved")
+        )
+      );
     }
   }
 
@@ -1233,7 +1374,11 @@ export async function archiveSelectedProductsAction(formData: FormData) {
     const productIds = readSelectedProductIds(formData);
 
     if (productIds.length) {
-      await Promise.all(productIds.map((productId) => updateProductStatus(productId, "archived")));
+      await Promise.all(
+        productIds.map((productId) =>
+          updateProductStatus(productId, "archived")
+        )
+      );
     }
   }
 
@@ -1246,7 +1391,9 @@ export async function markSelectedSoldAction(formData: FormData) {
     const productIds = readSelectedProductIds(formData);
 
     if (productIds.length) {
-      await Promise.all(productIds.map((productId) => updateProductStatus(productId, "sold")));
+      await Promise.all(
+        productIds.map((productId) => updateProductStatus(productId, "sold"))
+      );
     }
   }
 

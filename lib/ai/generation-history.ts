@@ -28,22 +28,24 @@ export type GenerationReviewSnapshot = {
   images: GenerationImageSnapshot | null;
 };
 
-export function buildMetadataSnapshot(product: Pick<
-  Product,
-  | "title"
-  | "description"
-  | "shortDescription"
-  | "category"
-  | "subcategory"
-  | "price"
-  | "compareAtPrice"
-  | "quantity"
-  | "materials"
-  | "colors"
-  | "tags"
-  | "aiNotes"
-  | "aiConfidence"
->): GenerationMetadataSnapshot {
+export function buildMetadataSnapshot(
+  product: Pick<
+    Product,
+    | "title"
+    | "description"
+    | "shortDescription"
+    | "category"
+    | "subcategory"
+    | "price"
+    | "compareAtPrice"
+    | "quantity"
+    | "materials"
+    | "colors"
+    | "tags"
+    | "aiNotes"
+    | "aiConfidence"
+  >
+): GenerationMetadataSnapshot {
   return {
     title: product.title,
     description: product.description,
@@ -51,17 +53,21 @@ export function buildMetadataSnapshot(product: Pick<
     category: product.category,
     subcategory: product.subcategory ?? null,
     price: Number(product.price),
-    compareAtPrice: product.compareAtPrice === null ? null : Number(product.compareAtPrice),
+    compareAtPrice:
+      product.compareAtPrice === null ? null : Number(product.compareAtPrice),
     quantity: product.quantity,
     materials: [...product.materials],
     colors: [...product.colors],
     tags: [...product.tags],
     aiNotes: product.aiNotes ?? null,
-    aiConfidence: product.aiConfidence === null ? null : Number(product.aiConfidence)
+    aiConfidence:
+      product.aiConfidence === null ? null : Number(product.aiConfidence)
   };
 }
 
-export function parseGenerationReviewSnapshot(value: unknown): GenerationReviewSnapshot | null {
+export function parseGenerationReviewSnapshot(
+  value: unknown
+): GenerationReviewSnapshot | null {
   if (!value || typeof value !== "object") {
     return null;
   }

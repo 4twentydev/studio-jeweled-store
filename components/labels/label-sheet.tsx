@@ -1,4 +1,7 @@
-import { ProductLabelCard, type ProductLabelCardData } from "@/components/labels/product-label-card";
+import {
+  ProductLabelCard,
+  type ProductLabelCardData
+} from "@/components/labels/product-label-card";
 
 export function LabelSheet({
   labels,

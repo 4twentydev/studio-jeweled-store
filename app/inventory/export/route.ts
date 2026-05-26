@@ -5,7 +5,11 @@ import { buildApprovedProductsExport } from "@/lib/publishing/publisher";
 function escapeCsvValue(value: string | number) {
   const stringValue = String(value);
 
-  if (stringValue.includes(",") || stringValue.includes('"') || stringValue.includes("\n")) {
+  if (
+    stringValue.includes(",") ||
+    stringValue.includes('"') ||
+    stringValue.includes("\n")
+  ) {
     return `"${stringValue.replaceAll('"', '""')}"`;
   }
 
@@ -97,7 +101,9 @@ export async function GET(request: Request) {
       return new Response(content, {
         headers: {
           "Content-Type":
-            format === "csv" ? "text/csv; charset=utf-8" : "application/json; charset=utf-8",
+            format === "csv"
+              ? "text/csv; charset=utf-8"
+              : "application/json; charset=utf-8",
           "Content-Disposition": `attachment; filename="jwld-approved-products.${format}"`
         }
       });
@@ -111,7 +117,9 @@ export async function GET(request: Request) {
     return new Response(exportData.content, {
       headers: {
         "Content-Type":
-          format === "csv" ? "text/csv; charset=utf-8" : "application/json; charset=utf-8",
+          format === "csv"
+            ? "text/csv; charset=utf-8"
+            : "application/json; charset=utf-8",
         "Content-Disposition": `attachment; filename="jwld-approved-products.${format}"`
       }
     });

@@ -1,8 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { motion } from "framer-motion";
+import type { ReactNode } from "react";
 
 export function MotionSection({
   children,

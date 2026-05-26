@@ -1,24 +1,24 @@
-import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { getProductById, listSkusForDate } from "@/db/queries";
 import {
+  type ProductStatus,
+  type PublishMode,
   aiGenerations,
   productImages,
   products,
   publishResults,
-  stylePresets,
-  type ProductStatus,
-  type PublishMode
+  stylePresets
 } from "@/db/schema";
 import {
   productDraftSchema,
   productReviewUpdateSchema,
-  stylePresetInputSchema,
   productStatusUpdateSchema,
+  stylePresetInputSchema,
   toNumericValue
 } from "@/db/validators";
 import type { GenerationOptions } from "@/lib/ai/generation-options";
 import { buildSku, formatSkuDate } from "@/lib/labels";
+import { eq } from "drizzle-orm";
 
 export const INITIAL_CATEGORIES = [
   "Lighters",
@@ -66,7 +66,10 @@ function isSkuConflict(error: unknown) {
     return false;
   }
 
-  return error.message.includes("products_sku_unique") || error.message.includes("duplicate key");
+  return (
+    error.message.includes("products_sku_unique") ||
+    error.message.includes("duplicate key")
+  );
 }
 
 export function formatPrice(value: number | string) {
@@ -80,7 +83,9 @@ export function formatPrice(value: number | string) {
 export function normalizeCategory(input: string) {
   const normalized = input.trim().toLowerCase();
 
-  const match = INITIAL_CATEGORIES.find((category) => category.toLowerCase() === normalized);
+  const match = INITIAL_CATEGORIES.find(
+    (category) => category.toLowerCase() === normalized
+  );
   if (match) {
     return match;
   }
@@ -128,7 +133,9 @@ export async function createProductDraft(input: unknown) {
           .values({
             sku: parsed.sku ?? (await generateSku(category, now)),
             title: parsed.title,
-            slug: parsed.slug ?? `${generateSlug(parsed.title)}-${randomSuffix(4).toLowerCase()}`,
+            slug:
+              parsed.slug ??
+              `${generateSlug(parsed.title)}-${randomSuffix(4).toLowerCase()}`,
             description: parsed.description,
             shortDescription: parsed.shortDescription ?? null,
             category,
@@ -258,7 +265,10 @@ export async function createPublishResult(input: {
   return result;
 }
 
-export async function updateProductReviewDraft(input: unknown, options?: { status?: ProductStatus }) {
+export async function updateProductReviewDraft(
+  input: unknown,
+  options?: { status?: ProductStatus }
+) {
   const parsed = productReviewUpdateSchema.parse(input);
   const db = getDb();
   const update: Partial<typeof products.$inferInsert> = {
@@ -290,7 +300,10 @@ export async function updateProductReviewDraft(input: unknown, options?: { statu
   return getProductById(parsed.productId);
 }
 
-export async function setPrimaryProductImage(input: { productId: string; imageId: string }) {
+export async function setPrimaryProductImage(input: {
+  productId: string;
+  imageId: string;
+}) {
   const db = getDb();
 
   await db.transaction(async (tx) => {
@@ -698,7 +711,10 @@ export async function updateAiGenerationLog(input: {
   return generation;
 }
 
-export async function selectFinalAiGeneration(input: { productId: string; generationId: string }) {
+export async function selectFinalAiGeneration(input: {
+  productId: string;
+  generationId: string;
+}) {
   const db = getDb();
   const now = new Date();
 

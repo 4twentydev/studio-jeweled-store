@@ -8,7 +8,11 @@ export type ProductMetadataPromptInput = {
   estimatedTimeSpent?: string;
   specialDetails?: string;
   creativity?: "low" | "medium" | "high";
-  descriptionTone?: "clean luxury" | "playful boutique" | "bold and edgy" | "simple catalog";
+  descriptionTone?:
+    | "clean luxury"
+    | "playful boutique"
+    | "bold and edgy"
+    | "simple catalog";
   priceStrategy?: "budget" | "standard" | "premium" | "one-of-one";
   humanInstruction?: string | null;
   scope?: "all" | "image" | "title_description" | "price" | "category_tags";

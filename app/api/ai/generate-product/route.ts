@@ -1,17 +1,21 @@
-import { NextResponse } from "next/server";
-import { z } from "zod";
-import { createAiGenerationLog, generateSlug, updateAiGenerationLog } from "@/db/products";
-import { getAiGenerationById, getStylePresetById } from "@/db/queries";
-import { uploadFileToBlob, uploadStyledBufferToBlob } from "@/lib/blob";
 import {
+  createAiGenerationLog,
+  generateSlug,
+  updateAiGenerationLog
+} from "@/db/products";
+import { getAiGenerationById, getStylePresetById } from "@/db/queries";
+import {
+  PRODUCT_IMAGE_MODEL,
+  PRODUCT_METADATA_MODEL,
   generateProductImageVariant,
   generateProductMetadata,
-  getErrorMessage,
-  PRODUCT_IMAGE_MODEL,
-  PRODUCT_METADATA_MODEL
+  getErrorMessage
 } from "@/lib/ai/openai";
+import { uploadFileToBlob, uploadStyledBufferToBlob } from "@/lib/blob";
 import { getDefaultStylePresetForGeneration } from "@/lib/data/products";
 import { assertFeatureEnabled } from "@/lib/env";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 export const runtime = "nodejs";
 
@@ -29,16 +33,33 @@ const routeSchema = z.object({
   specialDetails: z.string().trim().max(2000).optional()
 });
 
-type OperationStatus = "pending" | "processing" | "success" | "failed" | "not_requested";
+type OperationStatus =
+  | "pending"
+  | "processing"
+  | "success"
+  | "failed"
+  | "not_requested";
 
 type PipelineSnapshot = {
   phase: string;
   mode: "all" | "image" | "metadata";
   originalImageUrl: string;
   operations: {
-    metadata: { status: OperationStatus; updatedAt: string; errorMessage?: string | null };
-    image: { status: OperationStatus; updatedAt: string; errorMessage?: string | null };
-    cleanBackground: { status: OperationStatus; updatedAt: string; errorMessage?: string | null };
+    metadata: {
+      status: OperationStatus;
+      updatedAt: string;
+      errorMessage?: string | null;
+    };
+    image: {
+      status: OperationStatus;
+      updatedAt: string;
+      errorMessage?: string | null;
+    };
+    cleanBackground: {
+      status: OperationStatus;
+      updatedAt: string;
+      errorMessage?: string | null;
+    };
   };
   metadata?: unknown;
   images?: {
@@ -161,17 +182,24 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const input = readRouteInput(formData);
     const imageField = formData.get("image");
-    const uploadedFile = imageField instanceof File && imageField.size > 0 ? imageField : null;
+    const uploadedFile =
+      imageField instanceof File && imageField.size > 0 ? imageField : null;
 
-    let existingGeneration = input.generationId ? await getAiGenerationById(input.generationId) : null;
+    const existingGeneration = input.generationId
+      ? await getAiGenerationById(input.generationId)
+      : null;
     const stylePreset =
-      (input.stylePresetId ? await getStylePresetById(input.stylePresetId) : null) ??
+      (input.stylePresetId
+        ? await getStylePresetById(input.stylePresetId)
+        : null) ??
       existingGeneration?.stylePreset ??
       (await getDefaultStylePresetForGeneration());
     const originalImageUrl =
       input.originalImageUrl ||
       existingGeneration?.inputImageUrl ||
-      (uploadedFile ? (await uploadFileToBlob(uploadedFile, "originals")).url : null);
+      (uploadedFile
+        ? (await uploadFileToBlob(uploadedFile, "originals")).url
+        : null);
 
     if (!originalImageUrl) {
       return NextResponse.json(
@@ -193,15 +221,23 @@ export async function POST(request: Request) {
       );
     }
 
-    const snapshot = coerceSnapshot(existingGeneration?.parsedResponse, createInitialSnapshot({
-      mode: input.mode,
-      originalImageUrl
-    }));
-    const rawResponse = (existingGeneration?.rawResponse && typeof existingGeneration.rawResponse === "object"
-      ? existingGeneration.rawResponse
-      : {}) as Record<string, unknown>;
+    const snapshot = coerceSnapshot(
+      existingGeneration?.parsedResponse,
+      createInitialSnapshot({
+        mode: input.mode,
+        originalImageUrl
+      })
+    );
+    const rawResponse = (
+      existingGeneration?.rawResponse &&
+      typeof existingGeneration.rawResponse === "object"
+        ? existingGeneration.rawResponse
+        : {}
+    ) as Record<string, unknown>;
     rawResponse.prompts =
-      rawResponse.prompts && typeof rawResponse.prompts === "object" ? rawResponse.prompts : {};
+      rawResponse.prompts && typeof rawResponse.prompts === "object"
+        ? rawResponse.prompts
+        : {};
     generationSnapshot = snapshot;
     generationRawResponse = rawResponse;
 
@@ -221,7 +257,10 @@ export async function POST(request: Request) {
       }));
     generationId = generation.id;
 
-    async function persistGeneration(status?: "pending" | "success" | "failed", errorMessage?: string | null) {
+    async function persistGeneration(
+      status?: "pending" | "success" | "failed",
+      errorMessage?: string | null
+    ) {
       generation = await updateAiGenerationLog({
         generationId: generation.id,
         outputImageUrl: snapshot.images?.processedImageUrl ?? null,
@@ -258,7 +297,8 @@ export async function POST(request: Request) {
       const metadataResult = await generateProductMetadata(aiInput);
       snapshot.metadata = metadataResult.metadata;
       rawResponse.metadata = metadataResult.rawResponse;
-      (rawResponse.prompts as Record<string, unknown>).metadata = metadataResult.prompt;
+      (rawResponse.prompts as Record<string, unknown>).metadata =
+        metadataResult.prompt;
       setOperationStatus(snapshot, "metadata", "success");
       await persistGeneration("pending", null);
     }
@@ -291,7 +331,10 @@ export async function POST(request: Request) {
       await persistGeneration("pending", null);
 
       try {
-        const cleanBackgroundImage = await generateProductImageVariant(aiInput, "clean-background");
+        const cleanBackgroundImage = await generateProductImageVariant(
+          aiInput,
+          "clean-background"
+        );
         const cleanUpload = await uploadStyledBufferToBlob(
           imageFilename,
           cleanBackgroundImage.buffer,
@@ -304,7 +347,8 @@ export async function POST(request: Request) {
           cleanBackgroundImageUrl: cleanUpload.url
         };
         rawResponse.cleanBackgroundImage = cleanBackgroundImage.rawResponse;
-        (rawResponse.prompts as Record<string, unknown>).cleanBackgroundImage = cleanBackgroundImage.prompt;
+        (rawResponse.prompts as Record<string, unknown>).cleanBackgroundImage =
+          cleanBackgroundImage.prompt;
         setOperationStatus(snapshot, "cleanBackground", "success");
       } catch (error) {
         const warning = `Transparent or clean-background variant was not created: ${getErrorMessage(error)}`;
@@ -344,9 +388,16 @@ export async function POST(request: Request) {
     if (generationId && generationSnapshot && generationRawResponse) {
       generationSnapshot.phase = "failed";
 
-      for (const [key, operation] of Object.entries(generationSnapshot.operations)) {
-        if (operation.status === "processing" || operation.status === "pending") {
-          generationSnapshot.operations[key as keyof PipelineSnapshot["operations"]] = {
+      for (const [key, operation] of Object.entries(
+        generationSnapshot.operations
+      )) {
+        if (
+          operation.status === "processing" ||
+          operation.status === "pending"
+        ) {
+          generationSnapshot.operations[
+            key as keyof PipelineSnapshot["operations"]
+          ] = {
             status: "failed",
             updatedAt: nowIso(),
             errorMessage: message

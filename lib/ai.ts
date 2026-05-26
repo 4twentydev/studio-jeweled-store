@@ -1,9 +1,9 @@
+import type { StylePreset } from "@/db/schema";
+import { buildProductImagePrompt } from "@/lib/ai/prompts/product-image";
+import { env } from "@/lib/env";
+import { normalizeOutputSize } from "@/lib/style-presets";
 import OpenAI from "openai";
 import { z } from "zod";
-import type { StylePreset } from "@/db/schema";
-import { env } from "@/lib/env";
-import { buildProductImagePrompt } from "@/lib/ai/prompts/product-image";
-import { normalizeOutputSize } from "@/lib/style-presets";
 
 const metadataSchema = z.object({
   title: z.string(),
@@ -28,7 +28,13 @@ type GenerateProductIntelligenceInput = {
   targetPrice?: number;
   stylePreset: Pick<
     StylePreset,
-    "name" | "description" | "backgroundPrompt" | "lightingPrompt" | "shadowPrompt" | "cropRatio" | "outputSize"
+    | "name"
+    | "description"
+    | "backgroundPrompt"
+    | "lightingPrompt"
+    | "shadowPrompt"
+    | "cropRatio"
+    | "outputSize"
   >;
 };
 
@@ -57,7 +63,9 @@ export function buildMetadataPrompt(input: GenerateProductIntelligenceInput) {
   ].join("\n");
 }
 
-export async function generateProductIntelligence(input: GenerateProductIntelligenceInput) {
+export async function generateProductIntelligence(
+  input: GenerateProductIntelligenceInput
+) {
   const client = getClient();
   const imageDataUrl = await fileToDataUrl(input.imageFile);
   const metadataPrompt = buildMetadataPrompt(input);

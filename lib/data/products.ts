@@ -1,7 +1,6 @@
-import { unstable_cache } from "next/cache";
 import { hasDatabase } from "@/db";
 import { saveStylePreset } from "@/db/products";
-import { formatPrice, INITIAL_CATEGORIES } from "@/db/products";
+import { INITIAL_CATEGORIES, formatPrice } from "@/db/products";
 import {
   getAppSetting,
   getDefaultStylePreset,
@@ -11,24 +10,31 @@ import {
   listStylePresets,
   productPriceAsNumber
 } from "@/db/queries";
-import { productStatuses, type ProductStatus } from "@/db/schema";
-import { demoInventory, demoSettings } from "@/lib/demo-data";
-import type { GenerationOptions } from "@/lib/ai/generation-options";
+import { type ProductStatus, productStatuses } from "@/db/schema";
 import { parseGenerationReviewSnapshot } from "@/lib/ai/generation-history";
+import type { GenerationOptions } from "@/lib/ai/generation-options";
+import { demoInventory, demoSettings } from "@/lib/demo-data";
 import { env } from "@/lib/env";
 import {
-  defaultStudioSettings,
+  STORE_API_KEY_SETTING_KEY,
   STUDIO_SETTINGS_CACHE_TAG,
   STUDIO_SETTINGS_SETTING_KEY,
-  STORE_API_KEY_SETTING_KEY,
-  studioSettingsSchema,
-  type StudioSettings
+  type StudioSettings,
+  defaultStudioSettings,
+  studioSettingsSchema
 } from "@/lib/studio-settings";
 import { DEFAULT_STYLE_PRESETS } from "@/lib/style-presets";
+import { unstable_cache } from "next/cache";
 
 const LOW_STOCK_THRESHOLD = 3;
 
-export type InventorySort = "newest" | "oldest" | "price_high" | "price_low" | "category" | "quantity";
+export type InventorySort =
+  | "newest"
+  | "oldest"
+  | "price_high"
+  | "price_low"
+  | "category"
+  | "quantity";
 export type InventoryQuantityFilter = "all" | "out" | "low" | "in";
 export type InventoryPublishedFilter = "all" | "published" | "unpublished";
 export type InventoryAvailabilityFilter = "all" | "sold" | "available";
@@ -83,15 +89,13 @@ function buildDemoDate(offsetDays: number) {
 }
 
 function formatPublishResultMessage(
-  result:
-    | {
-        mode: "shared_db" | "api_push" | "export";
-        message: string;
-        target: string | null;
-        success: boolean;
-        createdAt: Date;
-      }
-    | null
+  result: {
+    mode: "shared_db" | "api_push" | "export";
+    message: string;
+    target: string | null;
+    success: boolean;
+    createdAt: Date;
+  } | null
 ) {
   if (!result) {
     return null;
@@ -110,7 +114,9 @@ function formatPublishResultMessage(
   };
 }
 
-function toInventoryCard(item: Awaited<ReturnType<typeof listProducts>>[number]): InventoryListItem {
+function toInventoryCard(
+  item: Awaited<ReturnType<typeof listProducts>>[number]
+): InventoryListItem {
   const primaryImage = item.images[0];
   const priceCents = Math.round(productPriceAsNumber(item) * 100);
   const isPublished = item.status === "published";
@@ -143,7 +149,10 @@ function toInventoryCard(item: Awaited<ReturnType<typeof listProducts>>[number])
       item.materials.length === 0 ||
       item.aiConfidence === null,
     styledImageUrl:
-      primaryImage?.processedUrl ?? primaryImage?.thumbnailUrl ?? primaryImage?.originalUrl ?? "/placeholder.png"
+      primaryImage?.processedUrl ??
+      primaryImage?.thumbnailUrl ??
+      primaryImage?.originalUrl ??
+      "/placeholder.png"
   };
 }
 
@@ -197,7 +206,9 @@ function getInventoryStats(items: InventoryListItem[]): InventoryStats {
     approved: items.filter((item) => item.status === "approved").length,
     published: items.filter((item) => item.status === "published").length,
     sold: items.filter((item) => item.isSold).length,
-    lowQuantity: items.filter((item) => item.quantityOnHand <= LOW_STOCK_THRESHOLD).length,
+    lowQuantity: items.filter(
+      (item) => item.quantityOnHand <= LOW_STOCK_THRESHOLD
+    ).length,
     estimatedInventoryValueCents: items.reduce(
       (sum, item) => sum + item.priceCents * Math.max(item.quantityOnHand, 0),
       0
@@ -221,24 +232,42 @@ function getSortValue(filters: InventoryFilters): InventorySort {
   return "newest";
 }
 
-function getQuantityFilterValue(filters: InventoryFilters): InventoryQuantityFilter {
+function getQuantityFilterValue(
+  filters: InventoryFilters
+): InventoryQuantityFilter {
   const quantity = filters.quantity;
-  return quantity === "out" || quantity === "low" || quantity === "in" ? quantity : "all";
+  return quantity === "out" || quantity === "low" || quantity === "in"
+    ? quantity
+    : "all";
 }
 
-function getPublishedFilterValue(filters: InventoryFilters): InventoryPublishedFilter {
+function getPublishedFilterValue(
+  filters: InventoryFilters
+): InventoryPublishedFilter {
   const published = filters.published;
-  return published === "published" || published === "unpublished" ? published : "all";
+  return published === "published" || published === "unpublished"
+    ? published
+    : "all";
 }
 
-function getAvailabilityFilterValue(filters: InventoryFilters): InventoryAvailabilityFilter {
+function getAvailabilityFilterValue(
+  filters: InventoryFilters
+): InventoryAvailabilityFilter {
   const availability = filters.availability;
-  return availability === "sold" || availability === "available" ? availability : "all";
+  return availability === "sold" || availability === "available"
+    ? availability
+    : "all";
 }
 
-function filterInventoryItems(items: InventoryListItem[], filters: InventoryFilters) {
+function filterInventoryItems(
+  items: InventoryListItem[],
+  filters: InventoryFilters
+) {
   const query = normalizeSearchValue(filters.q);
-  const status = filters.status && productStatuses.includes(filters.status as ProductStatus) ? filters.status : "all";
+  const status =
+    filters.status && productStatuses.includes(filters.status as ProductStatus)
+      ? filters.status
+      : "all";
   const category = filters.category?.trim() || "all";
   const quantityFilter = getQuantityFilterValue(filters);
   const publishedFilter = getPublishedFilterValue(filters);
@@ -246,7 +275,13 @@ function filterInventoryItems(items: InventoryListItem[], filters: InventoryFilt
 
   return items.filter((item) => {
     if (query) {
-      const haystack = [item.sku, item.title, item.category, item.collection, item.tags.join(" ")]
+      const haystack = [
+        item.sku,
+        item.title,
+        item.category,
+        item.collection,
+        item.tags.join(" ")
+      ]
         .join(" ")
         .toLowerCase();
 
@@ -267,7 +302,10 @@ function filterInventoryItems(items: InventoryListItem[], filters: InventoryFilt
       return false;
     }
 
-    if (quantityFilter === "low" && (item.quantityOnHand === 0 || item.quantityOnHand > LOW_STOCK_THRESHOLD)) {
+    if (
+      quantityFilter === "low" &&
+      (item.quantityOnHand === 0 || item.quantityOnHand > LOW_STOCK_THRESHOLD)
+    ) {
       return false;
     }
 
@@ -305,10 +343,15 @@ function sortInventoryItems(items: InventoryListItem[], sort: InventorySort) {
       case "price_low":
         return left.priceCents - right.priceCents;
       case "category":
-        return left.category.localeCompare(right.category) || left.title.localeCompare(right.title);
+        return (
+          left.category.localeCompare(right.category) ||
+          left.title.localeCompare(right.title)
+        );
       case "quantity":
-        return right.quantityOnHand - left.quantityOnHand || left.title.localeCompare(right.title);
-      case "newest":
+        return (
+          right.quantityOnHand - left.quantityOnHand ||
+          left.title.localeCompare(right.title)
+        );
       default:
         return right.createdAt.getTime() - left.createdAt.getTime();
     }
@@ -322,9 +365,13 @@ export async function getDashboardData() {
     return {
       metrics: {
         itemsInInventory: inventory.length,
-        readyForReview: inventory.filter((item) => item.status === "review").length,
-        lowStockCount: inventory.filter((item) => item.quantityOnHand <= LOW_STOCK_THRESHOLD).length,
-        publishReady: inventory.filter((item) => item.status === "approved").length,
+        readyForReview: inventory.filter((item) => item.status === "review")
+          .length,
+        lowStockCount: inventory.filter(
+          (item) => item.quantityOnHand <= LOW_STOCK_THRESHOLD
+        ).length,
+        publishReady: inventory.filter((item) => item.status === "approved")
+          .length,
         newCapturesToday: 4,
         aiProcessedToday: 3,
         publishedToday: 1
@@ -334,7 +381,9 @@ export async function getDashboardData() {
         statusLabel: formatInventoryStatus(item.status),
         inventoryStatus: `${item.quantityOnHand} on hand`
       })),
-      lowStock: inventory.filter((item) => item.quantityOnHand <= LOW_STOCK_THRESHOLD)
+      lowStock: inventory.filter(
+        (item) => item.quantityOnHand <= LOW_STOCK_THRESHOLD
+      )
     };
   }
 
@@ -343,9 +392,13 @@ export async function getDashboardData() {
   return {
     metrics: {
       itemsInInventory: inventory.length,
-      readyForReview: inventory.filter((item) => item.status === "review").length,
-      lowStockCount: inventory.filter((item) => item.quantityOnHand <= LOW_STOCK_THRESHOLD).length,
-      publishReady: inventory.filter((item) => item.status === "approved").length,
+      readyForReview: inventory.filter((item) => item.status === "review")
+        .length,
+      lowStockCount: inventory.filter(
+        (item) => item.quantityOnHand <= LOW_STOCK_THRESHOLD
+      ).length,
+      publishReady: inventory.filter((item) => item.status === "approved")
+        .length,
       newCapturesToday: 0,
       aiProcessedToday: 0,
       publishedToday: 0
@@ -357,7 +410,9 @@ export async function getDashboardData() {
         statusLabel: formatInventoryStatus(item.status),
         inventoryStatus: `${item.quantityOnHand} on hand`
       })),
-    lowStock: inventory.filter((item) => item.quantityOnHand <= LOW_STOCK_THRESHOLD)
+    lowStock: inventory.filter(
+      (item) => item.quantityOnHand <= LOW_STOCK_THRESHOLD
+    )
   };
 }
 
@@ -377,11 +432,16 @@ export async function getInventoryPageData(filters: InventoryFilters) {
   return {
     items: sortedItems,
     stats: getInventoryStats(items),
-    categories: [...new Set(items.map((item) => item.category))].sort((left, right) => left.localeCompare(right)),
+    categories: [...new Set(items.map((item) => item.category))].sort(
+      (left, right) => left.localeCompare(right)
+    ),
     appliedFilters: {
       q: filters.q?.trim() ?? "",
       status:
-        filters.status && productStatuses.includes(filters.status as ProductStatus) ? filters.status : "all",
+        filters.status &&
+        productStatuses.includes(filters.status as ProductStatus)
+          ? filters.status
+          : "all",
       category: filters.category?.trim() || "all",
       quantity: getQuantityFilterValue(filters),
       published: getPublishedFilterValue(filters),
@@ -412,7 +472,8 @@ export async function getReviewQueue() {
   return queue.map((item) => ({
     ...item,
     statusLabel: formatInventoryStatus(item.status),
-    aiConfidencePercent: item.aiConfidence === null ? null : Math.round(item.aiConfidence * 100),
+    aiConfidencePercent:
+      item.aiConfidence === null ? null : Math.round(item.aiConfidence * 100),
     createdDateLabel: new Intl.DateTimeFormat("en-US", {
       month: "short",
       day: "numeric"
@@ -432,19 +493,31 @@ export async function getReviewProduct(productId: string) {
 
   const primaryImage = product.images[0] ?? null;
   const originalImage =
-    product.images.find((image) => image.imageKind === "original") ?? primaryImage ?? null;
+    product.images.find((image) => image.imageKind === "original") ??
+    primaryImage ??
+    null;
   const processedImage =
-    product.images.find((image) => image.processedUrl) ?? primaryImage ?? originalImage ?? null;
+    product.images.find((image) => image.processedUrl) ??
+    primaryImage ??
+    originalImage ??
+    null;
   const selectedFinalGeneration =
     product.aiGenerations.find((generation) => generation.isSelectedFinal) ??
-    product.aiGenerations.find((generation) => generation.status === "success") ??
+    product.aiGenerations.find(
+      (generation) => generation.status === "success"
+    ) ??
     null;
 
   return {
     ...product,
     priceValue: productPriceAsNumber(product),
-    compareAtPriceValue: product.compareAtPrice ? Number(product.compareAtPrice) : null,
-    aiConfidencePercent: product.aiConfidence === null ? null : Math.round(Number(product.aiConfidence) * 100),
+    compareAtPriceValue: product.compareAtPrice
+      ? Number(product.compareAtPrice)
+      : null,
+    aiConfidencePercent:
+      product.aiConfidence === null
+        ? null
+        : Math.round(Number(product.aiConfidence) * 100),
     originalImage,
     processedImage,
     primaryImage,
@@ -454,7 +527,9 @@ export async function getReviewProduct(productId: string) {
       options: (generation.options ?? null) as GenerationOptions | null,
       reviewSnapshot: parseGenerationReviewSnapshot(generation.parsedResponse)
     })),
-    latestPublishResult: formatPublishResultMessage(product.publishResults[0] ?? null),
+    latestPublishResult: formatPublishResultMessage(
+      product.publishResults[0] ?? null
+    ),
     createdDateLabel: new Intl.DateTimeFormat("en-US", {
       month: "short",
       day: "numeric",
@@ -465,7 +540,9 @@ export async function getReviewProduct(productId: string) {
 
 export async function getInventoryProduct(productId: string) {
   if (!hasDatabase()) {
-    const demoProduct = demoInventory.map(toDemoInventoryCard).find((item) => item.id === productId);
+    const demoProduct = demoInventory
+      .map(toDemoInventoryCard)
+      .find((item) => item.id === productId);
 
     if (!demoProduct) {
       return null;
@@ -497,7 +574,9 @@ export async function getInventoryProduct(productId: string) {
           status: "success" as const,
           errorMessage: null,
           createdAt: demoProduct.updatedAt,
-          stylePreset: DEFAULT_STYLE_PRESETS.find((preset) => preset.isDefault) ?? DEFAULT_STYLE_PRESETS[0]
+          stylePreset:
+            DEFAULT_STYLE_PRESETS.find((preset) => preset.isDefault) ??
+            DEFAULT_STYLE_PRESETS[0]
         }
       ],
       latestPublishResult: null
@@ -515,13 +594,17 @@ export async function getInventoryProduct(productId: string) {
     ...mapped,
     shortDescription: product.shortDescription,
     subcategory: product.subcategory,
-    compareAtPriceValue: product.compareAtPrice ? Number(product.compareAtPrice) : null,
+    compareAtPriceValue: product.compareAtPrice
+      ? Number(product.compareAtPrice)
+      : null,
     priceValue: productPriceAsNumber(product),
     materials: product.materials,
     colors: product.colors,
     images: product.images,
     aiGenerations: product.aiGenerations,
-    latestPublishResult: formatPublishResultMessage(product.publishResults[0] ?? null)
+    latestPublishResult: formatPublishResultMessage(
+      product.publishResults[0] ?? null
+    )
   };
 }
 
@@ -538,7 +621,13 @@ export async function getSettingsSnapshot() {
 }
 
 async function getLegacySettingsFallback(): Promise<StudioSettings> {
-  const [brandVoice, defaultMarkupPercent, defaultCollection, publishMode, categories] = await Promise.all([
+  const [
+    brandVoice,
+    defaultMarkupPercent,
+    defaultCollection,
+    publishMode,
+    categories
+  ] = await Promise.all([
     getAppSetting<string>("brandVoice"),
     getAppSetting<number>("defaultMarkupPercent"),
     getAppSetting<string>("defaultCollection"),
@@ -550,26 +639,37 @@ async function getLegacySettingsFallback(): Promise<StudioSettings> {
     ...defaultStudioSettings,
     brandVoice: {
       ...defaultStudioSettings.brandVoice,
-      productDescriptionPrompt: brandVoice ?? defaultStudioSettings.brandVoice.productDescriptionPrompt,
-      defaultTone: defaultCollection ?? defaultStudioSettings.brandVoice.defaultTone
+      productDescriptionPrompt:
+        brandVoice ?? defaultStudioSettings.brandVoice.productDescriptionPrompt,
+      defaultTone:
+        defaultCollection ?? defaultStudioSettings.brandVoice.defaultTone
     },
     pricingRules: {
       ...defaultStudioSettings.pricingRules,
       defaultCompareAtMarkupPercent:
-        defaultMarkupPercent ?? defaultStudioSettings.pricingRules.defaultCompareAtMarkupPercent
+        defaultMarkupPercent ??
+        defaultStudioSettings.pricingRules.defaultCompareAtMarkupPercent
     },
     publishing: {
       ...defaultStudioSettings.publishing,
       publishMode:
-        publishMode === "shared_db" || publishMode === "api_push" || publishMode === "export"
+        publishMode === "shared_db" ||
+        publishMode === "api_push" ||
+        publishMode === "export"
           ? publishMode
           : defaultStudioSettings.publishing.publishMode,
-      storeApiUrl: env.JWLD_STORE_API_URL ?? defaultStudioSettings.publishing.storeApiUrl
+      storeApiUrl:
+        env.JWLD_STORE_API_URL ?? defaultStudioSettings.publishing.storeApiUrl
     },
     categories: {
       categories: categories?.length ? categories : [...INITIAL_CATEGORIES],
-      subcategories: defaultStudioSettings.categories.subcategories.filter((entry) =>
-        (categories?.length ? categories : INITIAL_CATEGORIES).includes(entry.category)
+      subcategories: defaultStudioSettings.categories.subcategories.filter(
+        (entry) => {
+          const availableCategories: readonly string[] = categories?.length
+            ? categories
+            : INITIAL_CATEGORIES;
+          return availableCategories.includes(entry.category);
+        }
       )
     }
   };
@@ -577,25 +677,30 @@ async function getLegacySettingsFallback(): Promise<StudioSettings> {
 
 const getCachedSettingsSnapshot = unstable_cache(
   async () => {
-    const [storedSettings, hasStoredApiKey, defaultStylePreset] = await Promise.all([
-      getAppSetting<unknown>(STUDIO_SETTINGS_SETTING_KEY),
-      getAppSetting<string>(STORE_API_KEY_SETTING_KEY),
-      getDefaultStylePreset()
-    ]);
+    const [storedSettings, hasStoredApiKey, defaultStylePreset] =
+      await Promise.all([
+        getAppSetting<unknown>(STUDIO_SETTINGS_SETTING_KEY),
+        getAppSetting<string>(STORE_API_KEY_SETTING_KEY),
+        getDefaultStylePreset()
+      ]);
 
     const parsed = studioSettingsSchema.safeParse(storedSettings);
-    const settings = parsed.success ? parsed.data : await getLegacySettingsFallback();
+    const settings = parsed.success
+      ? parsed.data
+      : await getLegacySettingsFallback();
 
     return {
       settings: {
         ...settings,
         imageStyle: {
           ...settings.imageStyle,
-          defaultStylePresetId: defaultStylePreset?.id ?? settings.imageStyle.defaultStylePresetId
+          defaultStylePresetId:
+            defaultStylePreset?.id ?? settings.imageStyle.defaultStylePresetId
         },
         publishing: {
           ...settings.publishing,
-          storeApiUrl: settings.publishing.storeApiUrl ?? env.JWLD_STORE_API_URL ?? null
+          storeApiUrl:
+            settings.publishing.storeApiUrl ?? env.JWLD_STORE_API_URL ?? null
         }
       },
       hasStoreApiKey: Boolean(hasStoredApiKey || env.JWLD_STORE_API_KEY),
@@ -622,7 +727,7 @@ export async function getStylePresetsData() {
 }
 
 async function ensureStylePresets() {
-  let presets = await listStylePresets();
+  const presets = await listStylePresets();
 
   if (presets.length > 0) {
     return;
@@ -640,7 +745,9 @@ const getCachedStylePresetsData = unstable_cache(
   async () => {
     const presets = await listStylePresets();
     const defaultPreset =
-      presets.find((preset) => preset.isDefault) ?? (await getDefaultStylePreset()) ?? presets[0];
+      presets.find((preset) => preset.isDefault) ??
+      (await getDefaultStylePreset()) ??
+      presets[0];
 
     return {
       presets,
@@ -653,7 +760,9 @@ const getCachedStylePresetsData = unstable_cache(
 
 export async function getDefaultStylePresetForGeneration() {
   if (!hasDatabase()) {
-    const demoDefaultPreset = DEFAULT_STYLE_PRESETS.find((preset) => preset.isDefault) ?? DEFAULT_STYLE_PRESETS[0];
+    const demoDefaultPreset =
+      DEFAULT_STYLE_PRESETS.find((preset) => preset.isDefault) ??
+      DEFAULT_STYLE_PRESETS[0];
 
     return {
       id: "demo-style-preset-1",
@@ -662,5 +771,9 @@ export async function getDefaultStylePresetForGeneration() {
   }
 
   const { presets, defaultPresetId } = await getStylePresetsData();
-  return presets.find((preset) => preset.id === defaultPresetId) ?? presets[0] ?? null;
+  return (
+    presets.find((preset) => preset.id === defaultPresetId) ??
+    presets[0] ??
+    null
+  );
 }

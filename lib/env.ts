@@ -5,7 +5,9 @@ const envSchema = z.object({
   DATABASE_URL: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   BLOB_READ_WRITE_TOKEN: z.string().optional(),
-  JWLD_PUBLISH_MODE: z.enum(["shared_db", "api_push", "export"]).default("export"),
+  JWLD_PUBLISH_MODE: z
+    .enum(["shared_db", "api_push", "export"])
+    .default("export"),
   JWLD_STOREFRONT_URL: z.string().url().optional(),
   JWLD_STORE_API_URL: z.string().url().optional(),
   JWLD_STORE_API_KEY: z.string().optional()

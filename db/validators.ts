@@ -1,4 +1,3 @@
-import { z } from "zod";
 import {
   aiGenerationStatuses,
   imageKinds,
@@ -11,6 +10,7 @@ import {
   priceStrategies,
   regenerationScopes
 } from "@/lib/ai/generation-options";
+import { z } from "zod";
 
 export const productStatusSchema = z.enum(productStatuses);
 export const productConditionSchema = z.enum(productConditions);
@@ -54,40 +54,42 @@ export const productInsertSchema = z.object({
   publishedAt: z.date().nullable().optional()
 });
 
-export const productDraftSchema = productInsertSchema.omit({
-  sku: true,
-  slug: true,
-  status: true,
-  publishedAt: true
-}).extend({
-  sku: z.string().trim().min(3).max(64).optional(),
-  slug: z.string().trim().min(1).max(256).optional(),
-  status: productStatusSchema.optional(),
-  images: z
-    .array(
-      z.object({
-        originalUrl: z.string().url(),
-        processedUrl: z.string().url().nullable().optional(),
-        thumbnailUrl: z.string().url().nullable().optional(),
-        altText: z.string().trim().nullable().optional(),
-        isPrimary: z.boolean().default(false),
-        imageKind: imageKindSchema.default("original")
+export const productDraftSchema = productInsertSchema
+  .omit({
+    sku: true,
+    slug: true,
+    status: true,
+    publishedAt: true
+  })
+  .extend({
+    sku: z.string().trim().min(3).max(64).optional(),
+    slug: z.string().trim().min(1).max(256).optional(),
+    status: productStatusSchema.optional(),
+    images: z
+      .array(
+        z.object({
+          originalUrl: z.string().url(),
+          processedUrl: z.string().url().nullable().optional(),
+          thumbnailUrl: z.string().url().nullable().optional(),
+          altText: z.string().trim().nullable().optional(),
+          isPrimary: z.boolean().default(false),
+          imageKind: imageKindSchema.default("original")
+        })
+      )
+      .default([]),
+    aiGeneration: z
+      .object({
+        inputImageUrl: z.string().url(),
+        outputImageUrl: z.string().url().nullable().optional(),
+        model: z.string().trim().min(1),
+        prompt: z.string().trim().min(1),
+        rawResponse: z.unknown().optional(),
+        parsedResponse: z.unknown().optional(),
+        status: aiGenerationStatusSchema.default("success"),
+        errorMessage: z.string().trim().nullable().optional()
       })
-    )
-    .default([]),
-  aiGeneration: z
-    .object({
-      inputImageUrl: z.string().url(),
-      outputImageUrl: z.string().url().nullable().optional(),
-      model: z.string().trim().min(1),
-      prompt: z.string().trim().min(1),
-      rawResponse: z.unknown().optional(),
-      parsedResponse: z.unknown().optional(),
-      status: aiGenerationStatusSchema.default("success"),
-      errorMessage: z.string().trim().nullable().optional()
-    })
-    .optional()
-});
+      .optional()
+  });
 
 export const productStatusUpdateSchema = z.object({
   productId: z.string().uuid(),
@@ -96,20 +98,23 @@ export const productStatusUpdateSchema = z.object({
   publishedAt: z.date().nullable().optional()
 });
 
-const stringListSchema = z.preprocess((value) => {
-  if (Array.isArray(value)) {
-    return value;
-  }
+const stringListSchema = z.preprocess(
+  (value) => {
+    if (Array.isArray(value)) {
+      return value;
+    }
 
-  if (typeof value === "string") {
-    return value
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
+    if (typeof value === "string") {
+      return value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
 
-  return [];
-}, z.array(z.string().trim().min(1)));
+    return [];
+  },
+  z.array(z.string().trim().min(1))
+);
 
 export const productReviewUpdateSchema = z.object({
   productId: z.string().uuid(),

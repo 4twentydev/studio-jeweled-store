@@ -1,7 +1,7 @@
-import { getProductById, listProducts } from "@/db/queries";
 import { createPublishResult, updateProductStatus } from "@/db/products";
-import { env } from "@/lib/env";
+import { getProductById, listProducts } from "@/db/queries";
 import type { Product, ProductImage, PublishMode } from "@/db/schema";
+import { env } from "@/lib/env";
 
 export type PublishResult = {
   success: boolean;
@@ -23,14 +23,18 @@ type ExportFormat = "json" | "csv";
 function getPrimaryImage(product: PublishableProduct) {
   return (
     product.images.find((image) => image.isPrimary) ??
-    product.images.find((image) => Boolean(image.processedUrl ?? image.thumbnailUrl ?? image.originalUrl)) ??
+    product.images.find((image) =>
+      Boolean(image.processedUrl ?? image.thumbnailUrl ?? image.originalUrl)
+    ) ??
     null
   );
 }
 
 function getPrimaryImageUrl(product: PublishableProduct) {
   const image = getPrimaryImage(product);
-  return image?.processedUrl ?? image?.thumbnailUrl ?? image?.originalUrl ?? null;
+  return (
+    image?.processedUrl ?? image?.thumbnailUrl ?? image?.originalUrl ?? null
+  );
 }
 
 function getMissingPublishFields(product: PublishableProduct) {
@@ -58,7 +62,8 @@ function buildExportRecord(product: PublishableProduct) {
     category: product.category,
     subcategory: product.subcategory,
     price: Number(product.price),
-    compareAtPrice: product.compareAtPrice === null ? null : Number(product.compareAtPrice),
+    compareAtPrice:
+      product.compareAtPrice === null ? null : Number(product.compareAtPrice),
     quantity: product.quantity,
     condition: product.condition,
     materials: product.materials,
@@ -73,7 +78,11 @@ function buildExportRecord(product: PublishableProduct) {
 function escapeCsvValue(value: string | number | null) {
   const stringValue = value === null ? "" : String(value);
 
-  if (stringValue.includes(",") || stringValue.includes('"') || stringValue.includes("\n")) {
+  if (
+    stringValue.includes(",") ||
+    stringValue.includes('"') ||
+    stringValue.includes("\n")
+  ) {
     return `"${stringValue.replaceAll('"', '""')}"`;
   }
 
@@ -134,7 +143,9 @@ export async function getApprovedProductsForExport(productIds?: string[]) {
     limit: productIds?.length
   });
 
-  return products.filter((product) => !productIds?.length || productIds.includes(product.id));
+  return products.filter(
+    (product) => !productIds?.length || productIds.includes(product.id)
+  );
 }
 
 export async function buildApprovedProductsExport(options?: {
@@ -148,7 +159,10 @@ export async function buildApprovedProductsExport(options?: {
   return {
     format,
     records,
-    content: format === "csv" ? buildCsvExport(records) : JSON.stringify(records, null, 2)
+    content:
+      format === "csv"
+        ? buildCsvExport(records)
+        : JSON.stringify(records, null, 2)
   };
 }
 
@@ -165,7 +179,9 @@ async function getApprovedProductOrThrow(productId: string) {
 
   const missingFields = getMissingPublishFields(product);
   if (missingFields.length) {
-    throw new Error(`Missing required publish fields: ${missingFields.join(", ")}.`);
+    throw new Error(
+      `Missing required publish fields: ${missingFields.join(", ")}.`
+    );
   }
 
   return product;
@@ -179,7 +195,8 @@ export const sharedDbPublisher: Publisher = {
       success: false,
       productId,
       mode: "shared_db",
-      message: "TODO: map JWLD Studio products into the shared JWLD.store products table.",
+      message:
+        "TODO: map JWLD Studio products into the shared JWLD.store products table.",
       target: "shared products table",
       payload: buildExportRecord(product)
     };
@@ -226,13 +243,14 @@ function getPublisherForMode(mode: PublishMode) {
       return sharedDbPublisher;
     case "api_push":
       return apiPublisher;
-    case "export":
     default:
       return exportPublisher;
   }
 }
 
-export async function publishProduct(productId: string): Promise<PublishResult> {
+export async function publishProduct(
+  productId: string
+): Promise<PublishResult> {
   const mode = env.JWLD_PUBLISH_MODE;
   const publisher = getPublisherForMode(mode);
   let result: PublishResult;
@@ -240,7 +258,8 @@ export async function publishProduct(productId: string): Promise<PublishResult> 
   try {
     result = await publisher.publishProduct(productId);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Publishing failed.";
+    const message =
+      error instanceof Error ? error.message : "Publishing failed.";
 
     await createPublishResult({
       productId,

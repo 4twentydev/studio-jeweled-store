@@ -1,6 +1,6 @@
-import QRCode from "qrcode";
 import type { Product } from "@/db/schema";
 import { env } from "@/lib/env";
+import QRCode from "qrcode";
 
 const CATEGORY_CODE_OVERRIDES: Record<string, string> = {
   lighters: "LTR",
@@ -31,16 +31,15 @@ export function getCategoryCode(category: string) {
     return override;
   }
 
-  const parts = category
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
+  const parts = category.trim().split(/\s+/).filter(Boolean);
 
   if (!parts.length) {
     return "GEN";
   }
 
-  const fromWords = parts.map((part) => compactAlphaNumeric(part).slice(0, 2)).join("");
+  const fromWords = parts
+    .map((part) => compactAlphaNumeric(part).slice(0, 2))
+    .join("");
   return (fromWords || compactAlphaNumeric(category)).slice(0, 5) || "GEN";
 }
 

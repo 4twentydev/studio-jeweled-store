@@ -16,7 +16,13 @@ export function buildProductImagePrompt(
   variant: ImageVariant,
   preset: Pick<
     StylePreset,
-    "name" | "description" | "backgroundPrompt" | "lightingPrompt" | "shadowPrompt" | "cropRatio" | "outputSize"
+    | "name"
+    | "description"
+    | "backgroundPrompt"
+    | "lightingPrompt"
+    | "shadowPrompt"
+    | "cropRatio"
+    | "outputSize"
   >
 ) {
   const variantInstruction =

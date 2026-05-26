@@ -1,10 +1,15 @@
-import { z } from "zod";
 import { publishModes } from "@/db/schema";
 import { DEFAULT_STYLE_PRESETS } from "@/lib/style-presets";
+import { z } from "zod";
 
 export const studioUserRoles = ["admin", "creator", "reviewer"] as const;
 export const exportFormats = ["csv", "json", "both"] as const;
-export const outputSizes = ["1024x1024", "1024x1536", "1536x1024", "auto"] as const;
+export const outputSizes = [
+  "1024x1024",
+  "1024x1536",
+  "1536x1024",
+  "auto"
+] as const;
 
 export const studioUserRoleSchema = z.enum(studioUserRoles);
 export const exportFormatSchema = z.enum(exportFormats);
@@ -170,18 +175,30 @@ export function toExampleDescriptionBlocks(value: string[]) {
   return value.join("\n---\n");
 }
 
-export function toCategoryValueLines(value: Array<{ category: string; value: number }>) {
+export function toCategoryValueLines(
+  value: Array<{ category: string; value: number }>
+) {
   return value.map((entry) => `${entry.category} | ${entry.value}`).join("\n");
 }
 
-export function toComplexityMultiplierLines(value: Array<{ label: string; multiplier: number }>) {
-  return value.map((entry) => `${entry.label} | ${entry.multiplier}`).join("\n");
+export function toComplexityMultiplierLines(
+  value: Array<{ label: string; multiplier: number }>
+) {
+  return value
+    .map((entry) => `${entry.label} | ${entry.multiplier}`)
+    .join("\n");
 }
 
-export function toSubcategoryLines(value: Array<{ category: string; subcategory: string }>) {
-  return value.map((entry) => `${entry.category} | ${entry.subcategory}`).join("\n");
+export function toSubcategoryLines(
+  value: Array<{ category: string; subcategory: string }>
+) {
+  return value
+    .map((entry) => `${entry.category} | ${entry.subcategory}`)
+    .join("\n");
 }
 
-export function toUserLines(value: Array<{ name: string; role: (typeof studioUserRoles)[number] }>) {
+export function toUserLines(
+  value: Array<{ name: string; role: (typeof studioUserRoles)[number] }>
+) {
   return value.map((entry) => `${entry.name} | ${entry.role}`).join("\n");
 }

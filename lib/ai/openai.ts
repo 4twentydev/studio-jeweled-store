@@ -1,17 +1,20 @@
-import OpenAI from "openai";
 import type { StylePreset } from "@/db/schema";
-import { env } from "@/lib/env";
-import { buildProductImagePrompt, type ProductImagePromptInput } from "@/lib/ai/prompts/product-image";
 import {
-  buildProductMetadataPrompt,
-  type ProductMetadataPromptInput
+  type ProductImagePromptInput,
+  buildProductImagePrompt
+} from "@/lib/ai/prompts/product-image";
+import {
+  type ProductMetadataPromptInput,
+  buildProductMetadataPrompt
 } from "@/lib/ai/prompts/product-metadata";
 import {
+  type ProductMetadata,
   jwldProductCategories,
-  productMetadataSchema,
-  type ProductMetadata
+  productMetadataSchema
 } from "@/lib/ai/schemas/product-metadata";
+import { env } from "@/lib/env";
 import { normalizeOutputSize } from "@/lib/style-presets";
+import OpenAI from "openai";
 
 export const PRODUCT_IMAGE_MODEL = "gpt-image-2";
 export const PRODUCT_METADATA_MODEL = "gpt-4.1";
@@ -88,7 +91,10 @@ export function getErrorMessage(error: unknown) {
   return "Unknown AI pipeline error.";
 }
 
-export async function withRetry<T>(operation: () => Promise<T>, options: RetryOptions) {
+export async function withRetry<T>(
+  operation: () => Promise<T>,
+  options: RetryOptions
+) {
   const maxAttempts = options.maxAttempts ?? 3;
   const initialDelayMs = options.initialDelayMs ?? 600;
   let lastError: unknown;
@@ -107,7 +113,9 @@ export async function withRetry<T>(operation: () => Promise<T>, options: RetryOp
     }
   }
 
-  throw new Error(`Retry loop exited unexpectedly for ${options.label}: ${getErrorMessage(lastError)}`);
+  throw new Error(
+    `Retry loop exited unexpectedly for ${options.label}: ${getErrorMessage(lastError)}`
+  );
 }
 
 function buildMetadataJsonSchema() {
@@ -246,7 +254,9 @@ export async function generateProductMetadata(
     }
   );
 
-  const metadata = productMetadataSchema.parse(JSON.parse(response.output_text));
+  const metadata = productMetadataSchema.parse(
+    JSON.parse(response.output_text)
+  );
 
   return {
     model: response.model,
@@ -261,7 +271,14 @@ export async function generateProductImageVariant(
     SourceImageInput & {
       stylePreset: Pick<
         StylePreset,
-        "id" | "name" | "description" | "backgroundPrompt" | "lightingPrompt" | "shadowPrompt" | "cropRatio" | "outputSize"
+        | "id"
+        | "name"
+        | "description"
+        | "backgroundPrompt"
+        | "lightingPrompt"
+        | "shadowPrompt"
+        | "cropRatio"
+        | "outputSize"
       >;
     },
   variant: "primary" | "clean-background"

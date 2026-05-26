@@ -1,15 +1,15 @@
-import { and, asc, desc, eq, inArray, like, type SQL } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
+  type Product,
+  type ProductStatus,
   aiGenerations,
   appSettings,
-  publishResults,
   productImages,
   products,
-  stylePresets,
-  type ProductStatus,
-  type Product
+  publishResults,
+  stylePresets
 } from "@/db/schema";
+import { type SQL, and, asc, desc, eq, inArray, like } from "drizzle-orm";
 
 export async function listProducts(options?: {
   status?: ProductStatus | ProductStatus[];
@@ -121,13 +121,21 @@ export async function getPrimaryImage(productId: string) {
 
 export async function getAppSetting<T>(key: string) {
   const db = getDb();
-  const [setting] = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
+  const [setting] = await db
+    .select()
+    .from(appSettings)
+    .where(eq(appSettings.key, key))
+    .limit(1);
   return (setting?.value ?? null) as T | null;
 }
 
 export async function upsertAppSetting<T>(key: string, value: T) {
   const db = getDb();
-  const [setting] = await db.select({ id: appSettings.id }).from(appSettings).where(eq(appSettings.key, key)).limit(1);
+  const [setting] = await db
+    .select({ id: appSettings.id })
+    .from(appSettings)
+    .where(eq(appSettings.key, key))
+    .limit(1);
 
   if (setting) {
     await db

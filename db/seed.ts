@@ -1,8 +1,11 @@
-import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { appSettings, stylePresets } from "@/db/schema";
-import { defaultStudioSettings, STUDIO_SETTINGS_SETTING_KEY } from "@/lib/studio-settings";
+import {
+  STUDIO_SETTINGS_SETTING_KEY,
+  defaultStudioSettings
+} from "@/lib/studio-settings";
 import { DEFAULT_STYLE_PRESETS } from "@/lib/style-presets";
+import { eq } from "drizzle-orm";
 
 const defaultSettings = [
   {
@@ -14,7 +17,11 @@ const defaultSettings = [
 const db = getDb();
 
 for (const setting of defaultSettings) {
-  const [existing] = await db.select({ id: appSettings.id }).from(appSettings).where(eq(appSettings.key, setting.key)).limit(1);
+  const [existing] = await db
+    .select({ id: appSettings.id })
+    .from(appSettings)
+    .where(eq(appSettings.key, setting.key))
+    .limit(1);
 
   if (existing) {
     await db

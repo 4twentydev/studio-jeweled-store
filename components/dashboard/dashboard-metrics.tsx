@@ -1,5 +1,5 @@
-import { Activity, Package, Sparkles, TriangleAlert } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Activity, Package, Sparkles, TriangleAlert } from "lucide-react";
 
 const icons = [Sparkles, Package, TriangleAlert, Activity];
 
@@ -32,7 +32,9 @@ export function DashboardMetrics({
             <CardContent className="flex items-center justify-between p-5">
               <div>
                 <p className="text-sm text-muted-foreground">{item.label}</p>
-                <p className="mt-3 font-[var(--font-display)] text-4xl">{item.value}</p>
+                <p className="mt-3 font-[var(--font-display)] text-4xl">
+                  {item.value}
+                </p>
               </div>
               <div className="rounded-full bg-primary/10 p-3 text-primary">
                 <Icon className="size-5" />

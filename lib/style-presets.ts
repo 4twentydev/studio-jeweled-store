@@ -63,7 +63,12 @@ export const DEFAULT_STYLE_PRESETS = [
 
 export type DefaultStylePreset = (typeof DEFAULT_STYLE_PRESETS)[number];
 
-const SUPPORTED_OUTPUT_SIZES = new Set(["1024x1024", "1024x1536", "1536x1024", "auto"]);
+const SUPPORTED_OUTPUT_SIZES = new Set([
+  "1024x1024",
+  "1024x1536",
+  "1536x1024",
+  "auto"
+]);
 
 export function normalizeOutputSize(size: string | null | undefined) {
   const value = size?.trim() ?? "";

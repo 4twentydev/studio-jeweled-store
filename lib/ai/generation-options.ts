@@ -7,8 +7,19 @@ export const descriptionTones = [
   "bold and edgy",
   "simple catalog"
 ] as const;
-export const priceStrategies = ["budget", "standard", "premium", "one-of-one"] as const;
-export const regenerationScopes = ["all", "image", "title_description", "price", "category_tags"] as const;
+export const priceStrategies = [
+  "budget",
+  "standard",
+  "premium",
+  "one-of-one"
+] as const;
+export const regenerationScopes = [
+  "all",
+  "image",
+  "title_description",
+  "price",
+  "category_tags"
+] as const;
 
 export const generationOptionsSchema = z.object({
   scope: z.enum(regenerationScopes).default("all"),

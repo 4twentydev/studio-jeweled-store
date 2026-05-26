@@ -4,6 +4,9 @@
     "enabled": true,
     "indentStyle": "space"
   },
+  "files": {
+    "ignore": ["node_modules", ".next", ".turbo", ".vercel", "dist", "coverage"]
+  },
   "linter": {
     "enabled": true,
     "rules": {

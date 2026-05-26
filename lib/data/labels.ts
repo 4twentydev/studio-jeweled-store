@@ -2,7 +2,12 @@ import { hasDatabase } from "@/db";
 import { listProducts, listProductsByIds } from "@/db/queries";
 import type { ProductStatus } from "@/db/schema";
 import { demoInventory } from "@/lib/demo-data";
-import { generateQrCodeDataUrl, getInternalProductUrl, getPublicProductUrl, type LabelQrTarget } from "@/lib/labels";
+import {
+  type LabelQrTarget,
+  generateQrCodeDataUrl,
+  getInternalProductUrl,
+  getPublicProductUrl
+} from "@/lib/labels";
 
 export type LabelListItem = {
   id: string;
@@ -30,9 +35,15 @@ function toPriceCents(price: string) {
   return Math.round(Number(price) * 100);
 }
 
-function sortByRequestedOrder<T extends { id: string }>(items: T[], orderedIds: string[]) {
+function sortByRequestedOrder<T extends { id: string }>(
+  items: T[],
+  orderedIds: string[]
+) {
   const orderMap = new Map(orderedIds.map((id, index) => [id, index]));
-  return [...items].sort((left, right) => (orderMap.get(left.id) ?? 0) - (orderMap.get(right.id) ?? 0));
+  return [...items].sort(
+    (left, right) =>
+      (orderMap.get(left.id) ?? 0) - (orderMap.get(right.id) ?? 0)
+  );
 }
 
 export async function getLabelSelectionList() {
@@ -63,7 +74,10 @@ export async function getLabelSelectionList() {
   }));
 }
 
-export async function getPrintableLabels(productIds: string[], qrTarget: LabelQrTarget) {
+export async function getPrintableLabels(
+  productIds: string[],
+  qrTarget: LabelQrTarget
+) {
   if (!hasDatabase()) {
     return Promise.all(
       sortByRequestedOrder(
@@ -86,13 +100,22 @@ export async function getPrintableLabels(productIds: string[], qrTarget: LabelQr
     );
   }
 
-  const products = sortByRequestedOrder(await listProductsByIds(productIds), productIds);
+  const products = sortByRequestedOrder(
+    await listProductsByIds(productIds),
+    productIds
+  );
 
   return Promise.all(
     products.map(async (product) => {
       const publicUrl = getPublicProductUrl(product);
-      const qrTargetUrl = qrTarget === "public" && publicUrl ? publicUrl : getInternalProductUrl(product.id);
-      const qrTargetLabel = qrTarget === "public" && publicUrl ? "Public product page" : "Studio inventory detail";
+      const qrTargetUrl =
+        qrTarget === "public" && publicUrl
+          ? publicUrl
+          : getInternalProductUrl(product.id);
+      const qrTargetLabel =
+        qrTarget === "public" && publicUrl
+          ? "Public product page"
+          : "Studio inventory detail";
 
       return {
         id: product.id,

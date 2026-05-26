@@ -22,15 +22,32 @@ export const productStatuses = [
   "sold"
 ] as const;
 
-export const productConditions = ["new", "handmade", "custom", "one_of_one"] as const;
-export const imageKinds = ["original", "processed", "lifestyle", "detail", "thumbnail"] as const;
+export const productConditions = [
+  "new",
+  "handmade",
+  "custom",
+  "one_of_one"
+] as const;
+export const imageKinds = [
+  "original",
+  "processed",
+  "lifestyle",
+  "detail",
+  "thumbnail"
+] as const;
 export const aiGenerationStatuses = ["pending", "success", "failed"] as const;
 export const publishModes = ["shared_db", "api_push", "export"] as const;
 
 export const productStatusEnum = pgEnum("product_status", productStatuses);
-export const productConditionEnum = pgEnum("product_condition", productConditions);
+export const productConditionEnum = pgEnum(
+  "product_condition",
+  productConditions
+);
 export const imageKindEnum = pgEnum("image_kind", imageKinds);
-export const aiGenerationStatusEnum = pgEnum("ai_generation_status", aiGenerationStatuses);
+export const aiGenerationStatusEnum = pgEnum(
+  "ai_generation_status",
+  aiGenerationStatuses
+);
 export const publishModeEnum = pgEnum("publish_mode", publishModes);
 
 export const products = pgTable(
@@ -58,8 +75,12 @@ export const products = pgTable(
     createdBy: text("created_by"),
     approvedBy: text("approved_by"),
     publishedAt: timestamp("published_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
   },
   (table) => [
     uniqueIndex("products_sku_unique").on(table.sku),
@@ -83,7 +104,9 @@ export const productImages = pgTable(
     altText: text("alt_text"),
     isPrimary: boolean("is_primary").notNull().default(false),
     imageKind: imageKindEnum("image_kind").notNull().default("original"),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
   },
   (table) => [
     index("product_images_product_id_idx").on(table.productId),
@@ -95,8 +118,12 @@ export const aiGenerations = pgTable(
   "ai_generations",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    productId: uuid("product_id").references(() => products.id, { onDelete: "set null" }),
-    stylePresetId: uuid("style_preset_id").references(() => stylePresets.id, { onDelete: "set null" }),
+    productId: uuid("product_id").references(() => products.id, {
+      onDelete: "set null"
+    }),
+    stylePresetId: uuid("style_preset_id").references(() => stylePresets.id, {
+      onDelete: "set null"
+    }),
     inputImageUrl: text("input_image_url").notNull(),
     outputImageUrl: text("output_image_url"),
     model: text("model").notNull(),
@@ -109,7 +136,9 @@ export const aiGenerations = pgTable(
     isSelectedFinal: boolean("is_selected_final").notNull().default(false),
     selectedAt: timestamp("selected_at", { withTimezone: true }),
     errorMessage: text("error_message"),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
   },
   (table) => [index("ai_generations_product_id_idx").on(table.productId)]
 );
@@ -127,8 +156,12 @@ export const stylePresets = pgTable(
     outputSize: text("output_size").notNull(),
     exampleImageUrls: text("example_image_urls").array().notNull().default([]),
     isDefault: boolean("is_default").notNull().default(false),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
   },
   (table) => [
     uniqueIndex("style_presets_name_unique").on(table.name),
@@ -142,7 +175,9 @@ export const appSettings = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     key: text("key").notNull(),
     value: jsonb("value").$type<unknown>().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
   },
   (table) => [uniqueIndex("app_settings_key_unique").on(table.key)]
 );
@@ -160,9 +195,13 @@ export const publishResults = pgTable(
     target: text("target"),
     payload: jsonb("payload").$type<unknown>(),
     response: jsonb("response").$type<unknown>(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
   },
-  (table) => [index("publish_results_product_id_idx").on(table.productId, table.createdAt)]
+  (table) => [
+    index("publish_results_product_id_idx").on(table.productId, table.createdAt)
+  ]
 );
 
 export const productsRelations = relations(products, ({ many }) => ({
