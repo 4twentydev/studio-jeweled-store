@@ -11,6 +11,8 @@ import { formatCurrency } from "@/lib/format";
 import Image from "next/image";
 import Link from "next/link";
 
+export const dynamic = "force-dynamic";
+
 function ConfidenceMeter({ value }: { value: number | null }) {
   const width = value ?? 0;
 
